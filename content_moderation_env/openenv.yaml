@@ -23,10 +23,12 @@ schemas:
       metadata:
         type: "object"
         properties:
+          user_id: { type: "string" }
           timestamp: { type: "string" }
           reports_count: { type: "integer" }
           author_trust_score: { type: "number" }
           account_age_days: { type: "integer" }
+          virality_score: { type: "number" }
       context:
         type: "array"
         items:
@@ -39,6 +41,9 @@ schemas:
       decision:
         type: "string"
         enum: ["ALLOW", "FLAG", "REMOVE", "ESCALATE"]
+      content_category:
+        type: "string"
+        enum: ["SPAM", "HATE_SPEECH", "MISINFORMATION", "HARASSMENT", "SAFE"]
       reasoning:
         type: "string"
         description: "Internal AI step rationale for taking action."
