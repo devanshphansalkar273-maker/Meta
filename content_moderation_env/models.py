@@ -22,6 +22,11 @@ class UserMetadata(BaseModel):
     author_trust_score: float = Field(..., ge=0.0, le=1.0, description="Dynamically updated trust score.")
     account_age_days: int = Field(..., ge=0, description="How long the author's account has existed.")
     virality_score: float = Field(default=0.0, ge=0.0, le=1.0, description="Momentum metrics of recent engagements.")
+    active_global_event: str = Field(default="None", description="Current global event context for drift-aware moderation.")
+    temporary_rule: str = Field(default="Standard policy applies", description="Temporary policy rule overrides based on active event.")
+    user_appeal_statement: str = Field(default="I did nothing wrong!", description="User-provided appeal text after an action decision.")
+    media_vision_tags: list = Field(default_factory=list, description="OCR/vision tags extracted from media assets.")
+    visual_text_mismatch_flag: bool = Field(default=False, description="Flag for mismatched text vs. media content.")
 
 class ModerationObservation(BaseModel):
     post_id: str = Field(..., description="Unique ID for the content piece.")

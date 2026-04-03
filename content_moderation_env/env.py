@@ -92,7 +92,12 @@ class ContentModerationEnv:
                 reports_count=metadata.get("reports_count", 0),
                 author_trust_score=current_trust,
                 account_age_days=metadata.get("account_age_days", 0),
-                virality_score=metadata.get("virality_score", 0.0)
+                virality_score=metadata.get("virality_score", 0.0),
+                active_global_event=metadata.get("active_global_event", "None"),
+                temporary_rule=metadata.get("temporary_rule", "Standard policy applies"),
+                user_appeal_statement=metadata.get("user_appeal_statement", "I did nothing wrong!"),
+                media_vision_tags=metadata.get("media_vision_tags", []),
+                visual_text_mismatch_flag=metadata.get("visual_text_mismatch_flag", False)
             ),
             context=dynamic_context
         )
