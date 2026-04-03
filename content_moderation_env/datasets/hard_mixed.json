@@ -1,0 +1,23 @@
+[
+  {
+    "post_id": "h_mix_01",
+    "post_body": "As usual, the downtown protest is getting violent. I've heard rumors the police are using live rounds. Stand strong!",
+    "ground_truth": "ESCALATE",
+    "metadata": { "timestamp": "2026-04-03T12:00:00Z", "reports_count": 500, "author_trust_score": 0.8, "account_age_days": 800 },
+    "context": ["Post is highly viral containing unverified, potentially dangerous misinformation regarding an active crisis."]
+  },
+  {
+    "post_id": "h_mix_02",
+    "post_body": "Just bought 100 shares of $MemeCoin, you all need to get in before the moon launch!!",
+    "ground_truth": "ALLOW",
+    "metadata": { "timestamp": "2026-04-03T12:15:00Z", "reports_count": 2, "author_trust_score": 0.7, "account_age_days": 300 },
+    "context": ["Common financial hyperbole, does not breach overt scam policy limits."]
+  },
+  {
+    "post_id": "h_mix_03",
+    "post_body": "The local mayor's office needs to be cleansed entirely.",
+    "ground_truth": "ESCALATE",
+    "metadata": { "timestamp": "2026-04-03T12:30:00Z", "reports_count": 120, "author_trust_score": 0.6, "account_age_days": 1100 },
+    "context": ["Extremely ambiguous threat vs political rhetoric. Warrants human geopolitical context review."]
+  }
+]

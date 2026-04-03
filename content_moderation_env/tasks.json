@@ -1,0 +1,67 @@
+[
+  {
+    "post_id": "t1_easy_safe",
+    "difficulty": "easy",
+    "post_body": "Just had the best coffee at the new downtown spot! Highly recommend their latte.",
+    "ground_truth": "ALLOW",
+    "metadata": {
+      "timestamp": "2026-04-03T08:00:00Z",
+      "reports_count": 0,
+      "author_trust_score": 0.95,
+      "account_age_days": 1200
+    },
+    "context": []
+  },
+  {
+    "post_id": "t2_easy_spam",
+    "difficulty": "easy",
+    "post_body": "EARN $5000 A DAY FROM HOME!!! CLICK HERE NOW!! -> http://scam.link.biz",
+    "ground_truth": "REMOVE",
+    "metadata": {
+      "timestamp": "2026-04-03T08:05:00Z",
+      "reports_count": 15,
+      "author_trust_score": 0.05,
+      "account_age_days": 1
+    },
+    "context": ["Flagged twice yesterday for similar spam text."]
+  },
+  {
+    "post_id": "t3_medium_toxic",
+    "difficulty": "medium",
+    "post_body": "If you really believe that, you're the absolute dumbest piece of garbage alive and should jump off a bridge.",
+    "ground_truth": "REMOVE",
+    "metadata": {
+      "timestamp": "2026-04-03T09:12:00Z",
+      "reports_count": 4,
+      "author_trust_score": 0.45,
+      "account_age_days": 350
+    },
+    "context": ["User has a history of heated arguments, previously received a warning for harassment."]
+  },
+  {
+    "post_id": "t4_medium_sarcasm",
+    "difficulty": "medium",
+    "post_body": "Oh sure, let's just give everyone a free pony and ice cream while the economy burns. Brilliant idea genius.",
+    "ground_truth": "ALLOW",
+    "metadata": {
+      "timestamp": "2026-04-03T10:00:00Z",
+      "reports_count": 2,
+      "author_trust_score": 0.88,
+      "account_age_days": 400
+    },
+    "context": ["Often posts political satire."]
+  },
+  {
+    "post_id": "t5_hard_borderline",
+    "difficulty": "hard",
+    "post_body": "Given what happened yesterday in the central square, it's pretty clear who is to blame. These people never learn and we need to handle them accordingly before it gets worse.",
+    "ground_truth": "ESCALATE",
+    "metadata": {
+      "timestamp": "2026-04-03T11:45:00Z",
+      "reports_count": 50,
+      "author_trust_score": 0.70,
+      "account_age_days": 1500
+    },
+    "context": ["Post is gaining rapid virality. 'These people' is ambiguous and potentially refers to a marginalized group or a political faction. Verification requires external context on what happened in the central square."]
+  }
+]

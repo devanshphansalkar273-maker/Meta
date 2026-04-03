@@ -1,0 +1,23 @@
+[
+  {
+    "post_id": "e_spam_01",
+    "post_body": "EARN $50,000 A DAY CLICK HERE => http://scam-link.org",
+    "ground_truth": "REMOVE",
+    "metadata": { "timestamp": "2026-04-03T10:00:00Z", "reports_count": 50, "author_trust_score": 0.05, "account_age_days": 1 },
+    "context": ["Flagged multiple times for low-quality spam."]
+  },
+  {
+    "post_id": "e_safe_01",
+    "post_body": "Beautiful sunset down at the pier today!",
+    "ground_truth": "ALLOW",
+    "metadata": { "timestamp": "2026-04-03T10:05:00Z", "reports_count": 0, "author_trust_score": 0.98, "account_age_days": 1200 },
+    "context": []
+  },
+  {
+    "post_id": "e_spam_02",
+    "post_body": "HOT SINGLES IN YOUR AREA 👉 http://fake-date.com",
+    "ground_truth": "REMOVE",
+    "metadata": { "timestamp": "2026-04-03T10:10:00Z", "reports_count": 30, "author_trust_score": 0.1, "account_age_days": 5 },
+    "context": ["Previously muted for similar posts."]
+  }
+]

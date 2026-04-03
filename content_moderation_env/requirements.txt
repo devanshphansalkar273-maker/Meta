@@ -1,0 +1,4 @@
+pydantic>=2.4.0
+openai>=1.0.0
+# mock openenv or actual framework dependency assumes presence on host/pip
+# openenv>=0.1.0
