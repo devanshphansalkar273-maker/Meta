@@ -1,0 +1,51 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1775187682914,
+  "projectRoot": "C:\\Users\\Croma\\OneDrive\\Desktop\\Documents\\Meta",
+  "techStack": {
+    "languages": [],
+    "frameworks": [],
+    "packageManager": null,
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": null,
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "content_moderation_env": {
+      "path": "content_moderation_env",
+      "purpose": null,
+      "fileCount": 8,
+      "lastAccessed": 1775187682852,
+      "keyFiles": [
+        "Dockerfile",
+        "env.py",
+        "inference.py",
+        "models.py",
+        "openenv.yaml"
+      ]
+    }
+  },
+  "hotPaths": [],
+  "userDirectives": []
+}

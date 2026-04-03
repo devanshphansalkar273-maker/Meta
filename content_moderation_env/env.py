@@ -19,7 +19,8 @@ class ContentModerationEnv:
     OpenEnv-compliant continuous environment featuring Dynamic User Reputation shifting.
     """
     def __init__(self, dataset_dir: str = "datasets"):
-        self.dataset_dir = Path(dataset_dir)
+        base_dir = Path(__file__).parent
+        self.dataset_dir = base_dir / dataset_dir
         self.feed_queue = []
         self._load_continuous_feed()
         self.reset()
@@ -30,7 +31,7 @@ class ContentModerationEnv:
         for file in files:
             path = self.dataset_dir / file
             if path.exists():
-                with open(path, 'r') as f:
+                with open(path, 'r', encoding='utf-8') as f:
                     self.feed_queue.extend(json.load(f))
 
     def reset(self) -> ModerationObservation:
