@@ -1,11 +1,84 @@
-<div align="center">
-  <h1>🛡️ TrustEnv: Universal AI Content Moderation</h1>
-  <p><i>A production-grade, highly-deterministic OpenEnv simulation built for the Meta OpenEnv Hackathon.</i></p>
-</div>
+# 🚀 Content Moderation OpenEnv - Production Ready
 
----
+**Complete AI Content Moderation Environment using OpenEnv + GPT-4.1 via OpenRouter**
 
-## 🎯 Problem Description & Real-World Relevance 
+## Quick Start
+
+```bash
+# Install
+pip install -r requirements.txt
+
+# Set API key
+export HF_TOKEN="your_openrouter_api_key"
+
+# Run inference
+python inference.py
+
+# Start API server
+python -m uvicorn server.app:app --host 0.0.0.0 --port 8000
+```
+
+## Features
+
+✅ Production-ready implementation  
+✅ OpenEnv compliant (reset, step, state)  
+✅ GPT-4.1 via OpenRouter API  
+✅ Fallback keyword-based logic  
+✅ Dense reward signals  
+✅ REST API with /health endpoint  
+✅ Docker & HF Spaces ready  
+✅ Multi-task (easy, medium, hard)  
+✅ Python SDK client  
+✅ GRPO training example  
+
+## Project Structure
+
+```
+├── inference.py         # Main script [START/STEP/END format]
+├── env.py              # OpenEnv environment
+├── models.py           # Pydantic schemas
+├── client.py           # Python SDK
+├── server/             # FastAPI server
+├── tasks/              # Task graders
+├── datasets/           # Test data
+└── Dockerfile          # Container config
+```
+
+## API Endpoints
+
+- `GET /health` - Health check
+- `POST /inference` - Single moderation
+- `POST /environment/create` - Create env instance
+- `GET /environment/{id}/state` - Get state
+- `GET /status` - Server status
+
+## Reward Logic
+
+**Correct**: +1.0  
+**Wrong VIP suppress**: -2.0  
+**Wrong safe suppress**: -1.0  
+**Missed critical harm**: -5.0 to -6.0  
+
+Scores clamped to [0.0, 1.0].
+
+## Model Configuration
+
+- **API**: https://openrouter.ai/api/v1
+- **Model**: openai/gpt-4.1
+- **Temperature**: 0
+- **Max tokens**: 200
+
+## Docker
+
+```bash
+docker build -t moderation-env:latest .
+docker run -e HF_TOKEN="key" -p 8000:8000 moderation-env:latest
+```
+
+## Version
+
+**1.0.0** - Production Ready ✅
+ 
 
 In the modern digital ecosystem—and hyper-critical to Meta's sprawling social frameworks (Facebook, Instagram, Threads)—platform safety hinges on **Content Moderation**. Human moderators cannot ingest the sheer volumetric scale of real-time posts, while legacy algorithmic filters are easily circumvented via obfuscation and evolving socio-geopolitical context.
 

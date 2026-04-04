@@ -3,12 +3,26 @@ version: "1.0"
 
 environment:
   name: "content_moderation_env"
-  description: "AI Content Moderation Environment simulating real-world social media moderation scenarios with dense rewards."
+  description: "AI Content Moderation Environment using GPT-4.1 via OpenRouter. Simulates real-world social media moderation scenarios with dense reward signals."
   author: "Croma"
+  version: "1.0.0"
 
 docker:
   build_context: "."
   dockerfile: "Dockerfile"
+  image: "content-moderation-env:latest"
+
+api:
+  port: 8000
+  health_endpoint: "/health"
+  inference_endpoint: "/inference"
+
+environment_config:
+  api_base_url: "https://openrouter.ai/api/v1"
+  model: "openai/gpt-4.1"
+  temperature: 0
+  max_tokens: 200
+  timeout: 10
 
 schemas:
   observation:
@@ -16,24 +30,29 @@ schemas:
     properties:
       post_id:
         type: "string"
-        description: "Unique string identifying the internal content."
+        description: "Unique identifier for the content."
       post_body:
         type: "string"
-        description: "String contents of the post to evaluate."
+        description: "The text content to moderate."
       metadata:
         type: "object"
         properties:
           user_id: { type: "string" }
           timestamp: { type: "string" }
-          reports_count: { type: "integer" }
-          author_trust_score: { type: "number" }
-          account_age_days: { type: "integer" }
-          virality_score: { type: "number" }
+          reports_count: { type: "integer", minimum: 0 }
+          author_trust_score: { type: "number", minimum: 0.0, maximum: 1.0 }
+          account_age_days: { type: "integer", minimum: 0 }
+          virality_score: { type: "number", minimum: 0.0, maximum: 1.0 }
+          active_global_event: { type: "string" }
+          temporary_rule: { type: "string" }
+          user_appeal_statement: { type: "string" }
+          media_vision_tags: { type: "array", items: { type: "string" } }
+          visual_text_mismatch_flag: { type: "boolean" }
       context:
         type: "array"
         items:
           type: "string"
-        description: "Array of historical user actions/flags."
+        description: "Historical context about the user."
   
   action:
     type: "object"
@@ -41,37 +60,51 @@ schemas:
       decision:
         type: "string"
         enum: ["ALLOW", "FLAG", "REMOVE", "ESCALATE"]
+        description: "The moderation decision."
       content_category:
         type: "string"
         enum: ["SPAM", "HATE_SPEECH", "MISINFORMATION", "HARASSMENT", "SAFE"]
+        description: "Classified content category."
       reasoning:
         type: "string"
-        description: "Internal AI step rationale for taking action."
+        description: "Explanation for the decision."
       confidence_score:
         type: "number"
         minimum: 0.0
         maximum: 1.0
+        description: "Confidence in the decision (0.0-1.0)."
 
 tasks:
   - id: "easy_spam"
     difficulty: "easy"
-    description: "Evaluates the agent's absolute classification ability on repetitive spam inputs."
+    description: "Basic spam detection with clear patterns."
     data_file: "datasets/easy_spam.json"
-    
+    target_metrics:
+      min_accuracy: 0.9
+      
   - id: "medium_toxic"
     difficulty: "medium"
-    description: "Evaluates context resolution between hyperbolic social behavior and actual policy-violating hate speech."
+    description: "Toxic content detection with context ambiguity."
     data_file: "datasets/medium_toxic.json"
+    target_metrics:
+      min_accuracy: 0.75
     
   - id: "hard_mixed"
     difficulty: "hard"
-    description: "Requires advanced escalation metrics evaluating dangerous political instability, unverified reporting, and hyper-ambiguity."
+    description: "Complex scenarios requiring escalation and nuanced judgment."
     data_file: "datasets/hard_mixed.json"
+    target_metrics:
+      min_accuracy: 0.6
 
 metadata:
   tags:
     - "trust-and-safety"
-    - "meta-hackathon"
     - "content-moderation"
+    - "openrouter"
+    - "gpt-4.1"
+    - "openenv"
   license: "MIT"
   entrypoint: "env:ContentModerationEnv"
+  scaling:
+    supports_parallel_envs: true
+    max_concurrent_environments: 10

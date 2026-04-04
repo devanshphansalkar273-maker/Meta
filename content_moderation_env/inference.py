@@ -1,202 +1,317 @@
+#!/usr/bin/env python3
+"""
+Production-ready inference script for Content Moderation OpenEnv.
+Uses OpenRouter API with GPT-4.1 for moderation decisions.
+"""
+
 import os
+import sys
 import json
-import time
-from openai import OpenAI
+import logging
+from typing import Optional
+from openai import OpenAI, APIError, RateLimitError
+
 from env import ContentModerationEnv
 from models import ModerationAction, Decision, ContentCategory
 
-def extract_action(client: OpenAI, obs) -> ModerationAction:
-    prompt = f"""
-    You are an expert AI content moderator running Meta-scale pipeline validation.
-    Evaluate the following post across Text, Metadata, and Contextual History.
-    
-    [CONTENT DATA]
-    Post ID: {obs.post_id}
-    Post Body: {obs.post_body}
-    
-    [METADATA & SIGNALS]
-    Account Age (Days): {obs.metadata.account_age_days}
-    Author Trust Score (0.0-1.0): {obs.metadata.author_trust_score}
-    Virality Score: {obs.metadata.virality_score}
-    Report Count: {obs.metadata.reports_count}
-    
-    [HISTORICAL CONTEXT]
-    {obs.context if obs.context else "No prior infractions."}
-    
-    [EVALUATION DIRECTIVES]
-    1. VIRALITY RISK: If Virality > 0.8 and you suspect toxicity, you MUST 'REMOVE' or 'ESCALATE'.
-    2. RECIDIVISM: If Author Trust < 0.4 and context shows past violations, apply zero-tolerance to ambiguous text.
-    3. CIB/SPAM: If Report Count > 20 but the text looks safe, check for hidden bot patterns before allowing.
-    
-    Respond strictly in the following JSON format matching this schema:
-    {{
-      "decision": "ALLOW" | "FLAG" | "REMOVE" | "ESCALATE",
-      "content_category": "SPAM" | "HATE_SPEECH" | "MISINFORMATION" | "HARASSMENT" | "SAFE",
-      "reasoning": "Specify the exact policy violation or contextual justification...",
-      "confidence_score": <float 0.0 to 1.0>
-    }}
-    """
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are a Trust and Safety API."},
-                {"role": "user", "content": prompt}
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.0
-        )
-        data = json.loads(response.choices[0].message.content)
-        data["decision"] = Decision(data.get("decision", "ESCALATE"))
-        data["content_category"] = ContentCategory(data.get("content_category", "SAFE"))
-        return ModerationAction(**data)
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
-    except Exception as e:
-        print(f"Error during OpenAI inference: {e}")
-        return ModerationAction(
-            decision=Decision.ESCALATE,
-            content_category=ContentCategory.SAFE,
-            reasoning=f"Fallback forced: {str(e)}",
-            confidence_score=0.0
-        )
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are a Trust and Safety API."},
-                {"role": "user", "content": prompt}
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.0
-        )
-        data = json.loads(response.choices[0].message.content)
+
+class ModerationInferenceEngine:
+    """OpenRouter-based content moderation inference engine with fallback logic."""
+    
+    def __init__(self):
+        """Initialize the inference engine with OpenRouter API credentials."""
+        self.api_key = os.getenv('HF_TOKEN') or os.getenv('OPENROUTER_API_KEY')
         
-        # Safe Enum casting
-        data["decision"] = Decision(data.get("decision", "ESCALATE"))
-        data["content_category"] = ContentCategory(data.get("content_category", "SAFE"))
-        return ModerationAction(**data)
-
-    except Exception as e:
-        print(f"Error during OpenAI inference: {e}")
-        return ModerationAction(
-            decision=Decision.ESCALATE,
-            content_category=ContentCategory.SAFE,
-            reasoning=f"Fallback forced: {str(e)}",
-            confidence_score=0.0
-        )
-
-
-def extract_appeal_action(client: OpenAI, obs, original_ai_reason: str) -> ModerationAction:
-    appeal_text = obs.metadata.user_appeal_statement or "I did nothing wrong!"
-
-    prompt = f"""
-You are the Secondary Review Integrity Agent. This post was previously REMOVED, and the user has submitted an official appeal.
-
-Original Post: {obs.post_body}
-Original AI Decision Reason: {original_ai_reason}
-
-🧑‍⚖️ USER APPEAL TEXT: "{appeal_text}"
-
-Instructions:
-1. Evaluate if the original removal was a 'False Positive' based on the user's new context.
-2. If the user's appeal provides valid context (e.g., reclaiming a slur, obvious satire missed by the first pass), you must 'ALLOW' to reinstate the post.
-3. If the user is lying or doubling down on policy violations, you must 'REMOVE' to uphold the ban.
-4. Your confidence score must be highly calibrated. Upholding a wrong decision carries a catastrophic penalty.
-
-Respond strictly in the following JSON format matching this schema:
+        if not self.api_key:
+            logger.warning("No API key found (HF_TOKEN or OPENROUTER_API_KEY). Using fallback logic only.")
+            self.use_api = False
+        else:
+            self.use_api = True
+        
+        if self.use_api:
+            self.client = OpenAI(
+                api_key=self.api_key,
+                base_url="https://openrouter.ai/api/v1"
+            )
+    
+    def get_moderation_decision(self, obs) -> ModerationAction:
+        """
+        Get moderation decision from GPT-4.1 via OpenRouter with fallback logic.
+        
+        Args:
+            obs: ModerationObservation object
+            
+        Returns:
+            ModerationAction with decision, category, reasoning, and confidence
+        """
+        if self.use_api:
+            try:
+                return self._call_gpt4_api(obs)
+            except (APIError, RateLimitError, Exception) as e:
+                logger.warning(f"API call failed: {e}. Using fallback logic.")
+                return self._fallback_decision(obs)
+        else:
+            return self._fallback_decision(obs)
+    
+    def _call_gpt4_api(self, obs) -> ModerationAction:
+        """Call GPT-4.1 via OpenRouter API."""
+        system_prompt = """You are a strict content moderation system for social media platforms.
+Analyze the post and metadata to determine the appropriate action.
+Return ONLY valid JSON matching this exact structure:
 {
   "decision": "ALLOW" | "FLAG" | "REMOVE" | "ESCALATE",
   "content_category": "SPAM" | "HATE_SPEECH" | "MISINFORMATION" | "HARASSMENT" | "SAFE",
-  "reasoning": "Brief concise diagnostic...",
-  "confidence_score": <float 0.0 to 1.0>
+  "reasoning": "Brief explanation",
+  "confidence_score": 0.0-1.0
 }
+
+Rules:
+- "ALLOW": Content is safe
+- "FLAG": Content needs review but can stay
+- "REMOVE": Content violates policy
+- "ESCALATE": Human review needed
 """
-
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are a Trust and Safety API."},
-                {"role": "user", "content": prompt}
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.0
-        )
-        data = json.loads(response.choices[0].message.content)
-        data["decision"] = Decision(data.get("decision", "ESCALATE"))
-        data["content_category"] = ContentCategory(data.get("content_category", "SAFE"))
-        return ModerationAction(**data)
-    except Exception as e:
-        print(f"Error during appeal inference: {e}")
-        return ModerationAction(
-            decision=Decision.ESCALATE,
-            content_category=ContentCategory.SAFE,
-            reasoning=f"Fallback forced appeal: {str(e)}",
-            confidence_score=0.0
-        )
-
-
-def main():
-    if "OPENAI_API_KEY" not in os.environ:
-        print("CRITICAL: OPENAI_API_KEY environment variable is missing.")
-        return
-
-    print("=============================================")
-    print("TrustEnv: Continuous Validation Feed")
-    print("=============================================\n")
-    
-    start_time = time.time()
-    client = OpenAI()
-    env = ContentModerationEnv()
-    
-    obs = env.reset()
-    done = False
-    
-    step_count = 0
-    while not done:
-        step_count += 1
-        print(f"\n[Feed Step {step_count}] Event: {obs.post_id}")
         
-        # Agent decides
-        action = extract_action(client, obs)
-        print(f"  └─ AI Decision: {action.decision.value} | Category: {action.content_category.value}")
-        print(f"  └─ Confidence: {action.confidence_score} | Reason: {action.reasoning}")
+        user_prompt = f"""Post ID: {obs.post_id}
+Post: {obs.post_body}
+Author Trust Score: {obs.metadata.author_trust_score}
+Account Age (days): {obs.metadata.account_age_days}
+Reports Count: {obs.metadata.reports_count}
+Virality Score: {obs.metadata.virality_score}
+Context: {', '.join(obs.context) if obs.context else 'None'}
 
-        # Secondary appeal review when a remove decision exists and user provided appeal text
-        if action.decision == Decision.REMOVE and obs.metadata.user_appeal_statement:
-            appeal_action = extract_appeal_action(client, obs, action.reasoning)
-            print(f"  └─ Appeal Review: {appeal_action.decision.value} | Confidence: {appeal_action.confidence_score} | Reason: {appeal_action.reasoning}")
-
-        # Step environment
-        obs, reward, done, info = env.step(action)
-
-        print(f"  └─ Env Response: Reward {reward:.2f}")
-        print(f"  └─ Grader Logic: {info['reward_details']['reason']}")
-        print(f"  └─ Active Cumulative Reward: {info['cumulative_reward']:.2f}")
-
-    # Final Metrics Printout
-    elapsed = time.time() - start_time
-    final_state = env.state()
-    metrics = final_state["metrics"]
+Make a moderation decision."""
+        
+        try:
+            response = self.client.chat.completions.create(
+                model="openai/gpt-4.1",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0,
+                max_tokens=200,
+                timeout=10
+            )
+            
+            content = response.choices[0].message.content
+            data = json.loads(content)
+            
+            # Normalize keys and values
+            decision_str = data.get("decision", "ESCALATE").upper()
+            if decision_str == "ALLOW":
+                decision_str = "ALLOW"
+            elif decision_str == "FLAG":
+                decision_str = "FLAG"
+            elif decision_str == "REMOVE":
+                decision_str = "REMOVE"
+            else:
+                decision_str = "ESCALATE"
+            
+            category_str = data.get("content_category", "SAFE").upper()
+            
+            return ModerationAction(
+                decision=Decision(decision_str),
+                content_category=ContentCategory(category_str),
+                reasoning=data.get("reasoning", "API decision"),
+                confidence_score=float(data.get("confidence_score", 0.5))
+            )
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error: {e}")
+            raise APIError("Failed to parse API response")
+        except Exception as e:
+            logger.error(f"API error: {e}")
+            raise
     
-    print("\n=============================================")
-    print("EVALUATION COMPLETE")
-    print("=============================================")
-    print(f"Total Computation Time: {elapsed:.2f} seconds")
-    print(f"Total Feed Events: {final_state['current_step']}")
-    print(f"Final Cumulative Dense Reward: {final_state['cumulative_reward']}\n")
+    def _fallback_decision(self, obs) -> ModerationAction:
+        """
+        Fallback keyword-based moderation when API is unavailable.
+        Uses rule-based heuristics for fast, reliable decisions.
+        """
+        post_lower = obs.post_body.lower()
+        harmful_keywords = {
+            'remove': ['kill', 'bomb', 'explode', 'shoot', 'murder'],
+            'flag': ['hate', 'stupid', 'dumb', 'idiotic', 'scum'],
+            'spam': ['click here', 'earn money', 'buy now', 'http://', 'https://']
+        }
+        
+        # Check for harmful keywords
+        for keyword in harmful_keywords['remove']:
+            if keyword in post_lower:
+                return ModerationAction(
+                    decision=Decision.REMOVE,
+                    content_category=ContentCategory.HARASSMENT,
+                    reasoning=f"Fallback: Detected harmful keyword '{keyword}'",
+                    confidence_score=0.6
+                )
+        
+        for keyword in harmful_keywords['flag']:
+            if keyword in post_lower:
+                return ModerationAction(
+                    decision=Decision.FLAG,
+                    content_category=ContentCategory.HATE_SPEECH,
+                    reasoning=f"Fallback: Detected potentially offensive keyword '{keyword}'",
+                    confidence_score=0.5
+                )
+        
+        # Check for spam patterns
+        spam_score = 0
+        for keyword in harmful_keywords['spam']:
+            if keyword in post_lower:
+                spam_score += 1
+        
+        if spam_score >= 2 or len(post_lower) > 200 and post_lower.count('http') > 2:
+            return ModerationAction(
+                decision=Decision.REMOVE,
+                content_category=ContentCategory.SPAM,
+                reasoning="Fallback: Detected spam patterns",
+                confidence_score=0.5
+            )
+        
+        # Check user trust and reports
+        if obs.metadata.author_trust_score < 0.3 and obs.metadata.reports_count > 5:
+            return ModerationAction(
+                decision=Decision.FLAG,
+                content_category=ContentCategory.SAFE,
+                reasoning="Fallback: Low-trust user with multiple reports",
+                confidence_score=0.4
+            )
+        
+        # Default to allow
+        return ModerationAction(
+            decision=Decision.ALLOW,
+            content_category=ContentCategory.SAFE,
+            reasoning="Fallback: No harmful patterns detected",
+            confidence_score=0.8
+        )
+
+
+def extract_action(client: OpenAI, obs) -> ModerationAction:
+    """Legacy function - kept for compatibility. Use ModerationInferenceEngine directly."""
+    engine = ModerationInferenceEngine()
+    return engine.get_moderation_decision(obs)
+
+
+def run_inference(max_steps: Optional[int] = None):
+    """
+    Execute inference loop over the content moderation environment.
     
-    print("--- 📊 Evaluation Metrics Matrix ---")
-    print(f"True Positives (TP):  {metrics['true_positives']}")
-    print(f"False Positives (FP): {metrics['false_positives']} (Censorship Cost)")
-    print(f"True Negatives (TN):  {metrics['true_negatives']}")
-    print(f"False Negatives (FN): {metrics['false_negatives']} (Missed Harm)\n")
+    Logs output in strict format:
+    [START]
+    [STEP] ...
+    [STEP] ...
+    [END]
     
-    print("--- 🎯 Precision & Recall ---")
-    print(f"Precision:         {metrics['precision']}")
-    print(f"Recall:            {metrics['recall']}")
-    print(f"F1 Score:          {metrics['f1_score']}")
-    print(f"Category Accuracy: {metrics['category_accuracy']} / {final_state['current_step']} correct")
+    Args:
+        max_steps: Optional limit on number of steps (default: all)
+    """
+    print("[START]")
+    
+    try:
+        # Initialize environment and inference engine
+        env = ContentModerationEnv()
+        engine = ModerationInferenceEngine()
+        
+        # Reset environment
+        obs = env.reset()
+        logger.info(f"Environment reset. Feed queue size: {len(env.feed_queue)}")
+        
+        total_reward = 0.0
+        step_count = 0
+        max_steps_to_run = max_steps or len(env.feed_queue)
+        
+        # Inference loop
+        while not env.done and step_count < max_steps_to_run:
+            try:
+                # Get moderation decision
+                action = engine.get_moderation_decision(obs)
+                
+                # Execute step in environment
+                next_obs, reward, done, info = env.step(action)
+                
+                # Log step with required format
+                print(f"[STEP] post_id={obs.post_id} decision={action.decision.value} "
+                      f"confidence={action.confidence_score:.2f} reward={reward:.2f}")
+                
+                total_reward += reward
+                step_count += 1
+                obs = next_obs
+                env.done = done
+                
+            except Exception as e:
+                logger.error(f"Error during step {step_count}: {e}")
+                # Continue on step errors
+                step_count += 1
+                if step_count < max_steps_to_run:
+                    try:
+                        obs = env._get_current_observation()
+                        env.current_idx += 1
+                    except:
+                        break
+        
+        # Calculate final metrics
+        avg_reward = total_reward / max(step_count, 1)
+        avg_reward = max(0.0, min(1.0, avg_reward))  # Clamp to [0, 1]
+        
+        print("[END]")
+        
+        # Log final statistics
+        logger.info(f"Inference complete:")
+        logger.info(f"  Total steps: {step_count}")
+        logger.info(f"  Total reward: {total_reward:.2f}")
+        logger.info(f"  Average reward (normalized): {avg_reward:.4f}")
+        logger.info(f"  Metrics: {json.dumps(env.metrics, indent=2)}")
+        
+        return {
+            "status": "success",
+            "steps": step_count,
+            "total_reward": total_reward,
+            "average_reward": avg_reward,
+            "metrics": env.metrics
+        }
+        
+    except Exception as e:
+        logger.error(f"Fatal error during inference: {e}", exc_info=True)
+        print("[END]")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
 
 if __name__ == "__main__":
-    main()
+    # Support command-line argument for max steps
+    max_steps = None
+    if len(sys.argv) > 1:
+        try:
+            max_steps = int(sys.argv[1])
+        except ValueError:
+            logger.warning(f"Invalid max_steps argument: {sys.argv[1]}")
+    
+    result = run_inference(max_steps=max_steps)
+    
+    # Exit with status code based on result
+    sys.exit(0 if result["status"] == "success" else 1)
+
+
+if __name__ == "__main__":
+    # Support command-line argument for max steps
+    max_steps = None
+    if len(sys.argv) > 1:
+        try:
+            max_steps = int(sys.argv[1])
+        except ValueError:
+            logger.warning(f"Invalid max_steps argument: {sys.argv[1]}")
+    
+    result = run_inference(max_steps=max_steps)
+    
+    # Exit with status code based on result
+    sys.exit(0 if result["status"] == "success" else 1)
+
