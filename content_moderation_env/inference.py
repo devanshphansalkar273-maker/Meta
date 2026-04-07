@@ -13,6 +13,7 @@ from openai import OpenAI, APIError, RateLimitError
 
 from env import ContentModerationEnv
 from models import ModerationAction, Decision, ContentCategory
+from prompts import get_moderation_system_prompt
 
 # Configure logging
 logging.basicConfig(
@@ -61,71 +62,62 @@ class ModerationInferenceEngine:
             return self._fallback_decision(obs)
     
     def _call_gpt4_api(self, obs) -> ModerationAction:
-        """Call GPT-4.1 via OpenRouter API."""
-        system_prompt = """You are a strict content moderation system for social media platforms.
-Analyze the post and metadata to determine the appropriate action.
-Return ONLY valid JSON matching this exact structure:
-{
-  "decision": "ALLOW" | "FLAG" | "REMOVE" | "ESCALATE",
-  "content_category": "SPAM" | "HATE_SPEECH" | "MISINFORMATION" | "HARASSMENT" | "SAFE",
-  "reasoning": "Brief explanation",
-  "confidence_score": 0.0-1.0
-}
-
-Rules:
-- "ALLOW": Content is safe
-- "FLAG": Content needs review but can stay
-- "REMOVE": Content violates policy
-- "ESCALATE": Human review needed
-"""
+        """Call OSS model via OpenRouter API with strict moderation prompt."""
+        system_prompt = get_moderation_system_prompt("strict")
         
-        user_prompt = f"""Post ID: {obs.post_id}
-Post: {obs.post_body}
-Author Trust Score: {obs.metadata.author_trust_score}
-Account Age (days): {obs.metadata.account_age_days}
-Reports Count: {obs.metadata.reports_count}
-Virality Score: {obs.metadata.virality_score}
+        user_prompt = f"""Post: {obs.post_body}
+Author Trust: {obs.metadata.author_trust_score}
+Account Age: {obs.metadata.account_age_days} days
+Reports: {obs.metadata.reports_count}
+Virality: {obs.metadata.virality_score}
 Context: {', '.join(obs.context) if obs.context else 'None'}
 
-Make a moderation decision."""
+Decide: allow, flag, remove, or escalate?"""
         
         try:
             response = self.client.chat.completions.create(
-                model="openai/gpt-4.1",
+                model="openai/gpt-oss-120b",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=0,
-                max_tokens=200,
+                max_tokens=5,
                 timeout=10
             )
             
-            content = response.choices[0].message.content
-            data = json.loads(content)
+            # Validate and clean response
+            content = response.choices[0].message.content.strip().lower()
+            valid_decisions = ["allow", "flag", "remove", "escalate"]
             
-            # Normalize keys and values
-            decision_str = data.get("decision", "ESCALATE").upper()
-            if decision_str == "ALLOW":
-                decision_str = "ALLOW"
-            elif decision_str == "FLAG":
-                decision_str = "FLAG"
-            elif decision_str == "REMOVE":
-                decision_str = "REMOVE"
-            else:
-                decision_str = "ESCALATE"
+            # Parse simple one-word response
+            decision_found = None
+            for valid_decision in valid_decisions:
+                if valid_decision in content:
+                    decision_found = valid_decision
+                    break
             
-            category_str = data.get("content_category", "SAFE").upper()
+            if not decision_found:
+                # Fallback if unexpected response
+                logger.warning(f"Unexpected API response: {content}")
+                decision_found = "escalate"
+            
+            # Map to enum values
+            decision_map = {
+                "allow": ("ALLOW", "SAFE", "API decision: Allow"),
+                "flag": ("FLAG", "SAFE", "API decision: Flag for review"),
+                "remove": ("REMOVE", "HARASSMENT", "API decision: Remove"),
+                "escalate": ("ESCALATE", "SAFE", "API decision: Escalate")
+            }
+            
+            decision_str, category_str, reasoning = decision_map[decision_found]
             
             return ModerationAction(
                 decision=Decision(decision_str),
                 content_category=ContentCategory(category_str),
-                reasoning=data.get("reasoning", "API decision"),
-                confidence_score=float(data.get("confidence_score", 0.5))
+                reasoning=reasoning,
+                confidence_score=0.8
             )
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON decode error: {e}")
-            raise APIError("Failed to parse API response")
         except Exception as e:
             logger.error(f"API error: {e}")
             raise
@@ -237,8 +229,7 @@ def run_inference(max_steps: Optional[int] = None):
                 next_obs, reward, done, info = env.step(action)
                 
                 # Log step with required format
-                print(f"[STEP] post_id={obs.post_id} decision={action.decision.value} "
-                      f"confidence={action.confidence_score:.2f} reward={reward:.2f}")
+                print(f"[STEP] step={step_count+1} action={action.decision.value} reward={reward:.2f} done={done} error=None")
                 
                 total_reward += reward
                 step_count += 1
@@ -256,11 +247,11 @@ def run_inference(max_steps: Optional[int] = None):
                     except:
                         break
         
-        # Calculate final metrics
         avg_reward = total_reward / max(step_count, 1)
         avg_reward = max(0.0, min(1.0, avg_reward))  # Clamp to [0, 1]
-        
-        print("[END]")
+
+        success = avg_reward >= 0.5
+        print(f"[END] success={success} steps={step_count} score={avg_reward:.4f}")
         
         # Log final statistics
         logger.info(f"Inference complete:")
@@ -279,7 +270,8 @@ def run_inference(max_steps: Optional[int] = None):
         
     except Exception as e:
         logger.error(f"Fatal error during inference: {e}", exc_info=True)
-        print("[END]")
+        success = False
+        print(f"[END] success={success} steps={step_count} score=0.0000")
         return {
             "status": "error",
             "error": str(e)
@@ -299,19 +291,3 @@ if __name__ == "__main__":
     
     # Exit with status code based on result
     sys.exit(0 if result["status"] == "success" else 1)
-
-
-if __name__ == "__main__":
-    # Support command-line argument for max steps
-    max_steps = None
-    if len(sys.argv) > 1:
-        try:
-            max_steps = int(sys.argv[1])
-        except ValueError:
-            logger.warning(f"Invalid max_steps argument: {sys.argv[1]}")
-    
-    result = run_inference(max_steps=max_steps)
-    
-    # Exit with status code based on result
-    sys.exit(0 if result["status"] == "success" else 1)
-
