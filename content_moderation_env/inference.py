@@ -86,109 +86,68 @@ Context: {', '.join(obs.context) if obs.context else 'None'}
 Decide: allow, flag, remove, or escalate?"""
         
         try:
-            response = self.client.chat.completions.create(
-                model="openai/gpt-oss-120b",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0,
-                max_tokens=200,
-                timeout=30
+            from openai import OpenAI
+            client = OpenAI(
+              base_url="https://integrate.api.nvidia.com/v1",
+              api_key="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"
             )
-            
-            print("RAW RESPONSE:", response)
 
-            content = None
+            completion = client.chat.completions.create(
+              model="meta/llama-3.3-70b-instruct",
+              messages=[
+                  {"role": "system", "content": system_prompt},
+                  {"role": "user", "content": user_prompt}
+              ],
+              temperature=0.2,
+              top_p=0.7,
+              max_tokens=1024,
+              stream=True
+            )
 
-            try:
-                # NVIDIA reasoning_content FIRST (primary for gpt-oss-120b)
-                choice = response.choices[0]
-                msg = choice.message
-                content = (
-                    msg.content or  # Read from content per feedback
-                    getattr(msg, 'reasoning_content', None) or 
-                    getattr(choice, 'text', None) or
-                    getattr(msg, 'audio', None) or
-                    ''
-                )
-                print("EXTRACTED RAW:", repr(content))
-            except Exception:
-                pass
+            content = ""
+            for chunk in completion:
+                if chunk.choices and chunk.choices[0].delta.content is not None:
+                    chunk_text = chunk.choices[0].delta.content
+                    print(chunk_text, end="")
+                    content += chunk_text
+            print() # Print newline after stream
 
-            # JSON dump fallback
             if not content:
-                try:
-                    data = json.loads(response.model_dump_json())
-                    content = data['choices'][0]['message'].get('reasoning_content') or data['choices'][0]['message']['content']
-                except Exception:
-                    pass
+                content = "ESCALATE"
 
-            # Ultimate fallback
-            if not content:
-                content = str(response)
-
-            print("EXTRACTED CONTENT:", repr(content))
-
-            content_str = (content or "").strip()
-            print("PROCESSED CONTENT:", repr(content_str))
+            content_str = str(content).strip().upper()
             
             decision_found = None
+            import re
             
-            # Parse JSON after </reasoning> (feedback)
-            try:
-                if '</reasoning>' in content_str:
-                    json_part = content_str.split('</reasoning>')[-1].strip()
-                else:
-                    json_part = content_str
-                json_data = json.loads(json_part)
-                if 'decision' in json_data:
-                    decision_found = json_data['decision'].upper()
-                    print(f"JSON decision: {decision_found}")
-            except (json.JSONDecodeError, KeyError):
-                pass
-            
-# Fallback: word matching + regex for reasoning (fixes NVIDIA model)
-            if not decision_found:
-                import re
-                content_upper = content_str.upper()
-                words = content_upper.split()
+            # First extract JSON decision using regex
+            json_match = re.search(r'{"DECISION":\s*"([A-Z]+)"}', content_str)
+            if json_match:
+                decision_found = json_match.group(1)
+            else:
+                # Then fallback to keyword detection
                 valid_decisions = ["ALLOW", "FLAG", "REMOVE", "ESCALATE"]
-                
-                # Exact single word
-                if len(words) == 1 and words[0] in valid_decisions:
-                    decision_found = words[0]
-                # Any matching word
-                elif any(word in valid_decisions for word in words):
-                    for word in words:
-                        if word in valid_decisions:
-                            decision_found = word
-                            break
-                # Regex: infer from reasoning keywords
-                elif re.search(r'\b(?:SPAM|SCAM|FAKE|LINK|HOT.*SINGLES)\b', content_upper, re.I):
-                    decision_found = "REMOVE"
-                elif re.search(r'\b(?:SAFE|BENIGN|NORMAL|POSITIVE|ALLOW)\b', content_upper, re.I):
-                    decision_found = "ALLOW"
-                elif re.search(r'\b(?:DRIVING|RAIN|WOW)\b', content_upper, re.I):
-                    decision_found = "ALLOW"
-                else:
-                    decision_found = "ESCALATE"
-                print(f"Regex decision: {decision_found}")
+                # Exact single word or substring detection
+                for word in valid_decisions:
+                    if word in content_str:
+                        decision_found = word
+                        break
             
+            # Final fallback -> ESCALATE
             if not decision_found:
-                logger.warning(f"Unexpected API response: {content_str}")
                 decision_found = "ESCALATE"
-                print(f"Fallback to ESCALATE")
             
             # Map to enum values
             decision_map = {
                 "ALLOW": ("ALLOW", "SAFE", "API decision: Allow"),
                 "FLAG": ("FLAG", "SAFE", "API decision: Flag for review"),
-                "REMOVE": ("REMOVE", "HARASSMENT", "API decision: Remove"),
+                "REMOVE": ("REMOVE", "SPAM", "API decision: Remove"),
                 "ESCALATE": ("ESCALATE", "SAFE", "API decision: Escalate")
             }
             
-            decision_str, category_str, reasoning = decision_map[decision_found]
+            # Prevent KeyErrors on unexpected decisions by defaulting to ESCALATE
+            decision_tuple = decision_map.get(decision_found, decision_map["ESCALATE"])
+            decision_str, category_str, reasoning = decision_tuple
             
             return ModerationAction(
                 decision=Decision(decision_str),
@@ -238,9 +197,9 @@ def run_inference(max_steps: Optional[int] = None):
         env = ContentModerationEnv()
         engine = ModerationInferenceEngine()
         
-        # Reset environment
-        obs = env.reset()
-        logger.info(f"Environment reset. Feed queue size: {len(env.feed_queue)}")
+        # Reset environment to hard task
+        obs = env.reset(task="hard")
+        logger.info(f"Environment reset to HARD tasks. Feed queue size: {len(env.feed_queue)}")
         
         total_reward = 0.0
         step_count = 0

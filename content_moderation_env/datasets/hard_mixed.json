@@ -21,9 +21,45 @@
     "post_id": "h_mix_03",
     "post_body": "The local mayor's office needs to be cleansed entirely.",
     "ground_truth": "ESCALATE",
-    "category": "HATE_SPEECH",
+    "category": "TOXIC",
     "user_id": "usr_politic_fan",
     "metadata": { "timestamp": "2026-04-03T12:30:00Z", "reports_count": 120, "author_trust_score": 0.5, "account_age_days": 1100, "virality_score": 0.65 },
     "context": ["Extremely ambiguous threat vs political rhetoric. Warrants human geopolitical context review."]
+  },
+  {
+    "post_id": "h_mix_04",
+    "post_body": "You always show up here with these terrible takes. It's honestly embarrassing to watch you try to form a coherent thought. Do everyone a favor and log off.",
+    "ground_truth": "ESCALATE",
+    "category": "HARASSMENT",
+    "user_id": "usr_debater",
+    "metadata": { "timestamp": "2026-04-03T13:00:00Z", "reports_count": 5, "author_trust_score": 0.55, "account_age_days": 400, "virality_score": 0.1 },
+    "context": ["Borderline harassment: attacks the user's intelligence repeatedly in a thread but avoids explicit slurs. Needs human review."]
+  },
+  {
+    "post_id": "h_mix_05",
+    "post_body": "I've finally realized the truth: we need to deport all the left-handed people immediately. They are a sinister threat to our right-handed supremacy and they keep stealing all the good scissors! ✂️😠 #BanLefties #Satire",
+    "ground_truth": "ALLOW",
+    "category": "TOXIC",
+    "user_id": "usr_comedian99",
+    "metadata": { "timestamp": "2026-04-03T13:15:00Z", "reports_count": 45, "author_trust_score": 0.85, "account_age_days": 1200, "virality_score": 0.8 },
+    "context": ["Satirical post mimicking hate speech tropes using 'left-handed people' as the target. Hashtag clearly indicates satire."]
+  },
+  {
+    "post_id": "h_mix_06",
+    "post_body": "Breaking: Dr. Aris Thorne's new clinical study in the European Journal of Alternative Epidemiology confirms that mRNA alters human DNA within 48 hours of injection. The mainstream media is covering it up! Read before it's deleted!!",
+    "ground_truth": "REMOVE",
+    "category": "MISINFORMATION",
+    "user_id": "usr_truthseeker",
+    "metadata": { "timestamp": "2026-04-03T13:45:00Z", "reports_count": 210, "author_trust_score": 0.2, "account_age_days": 150, "virality_score": 0.95 },
+    "context": ["Misinformation with plausible framing: uses fake doctor name and non-existent medical journal to spread debunked vaccine conspiracy."]
+  },
+  {
+    "post_id": "h_mix_07",
+    "post_body": "Earn free crypto today! 💸 Gagner de l'argent de la maison très facilement. 🏠🔥 Trabaja desde casa y gana mucho dinero al instante 👉 http://crypto-win-secure-scam.link/login",
+    "ground_truth": "REMOVE",
+    "category": "SPAM",
+    "user_id": "usr_bot_0091",
+    "metadata": { "timestamp": "2026-04-03T14:00:00Z", "reports_count": 8, "author_trust_score": 0.05, "account_age_days": 2, "virality_score": 0.05 },
+    "context": ["Multilingual spam blending English, French, and Spanish to bypass simple keyword filters. Contains phishing link."]
   }
 ]

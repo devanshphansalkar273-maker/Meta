@@ -115,8 +115,8 @@ class ContentModerationEnv:
         metadata = data.get("metadata", {})
         
         return ModerationObservation(
-            post_id=data["post_id"],
-            post_body=data["post_body"],
+            post_id=data.get("post_id", "unknown"),
+            post_body=data.get("post_body", ""),
             metadata=UserMetadata(
                 user_id=user_id,
                 timestamp=metadata.get("timestamp"),
@@ -139,7 +139,7 @@ class ContentModerationEnv:
 
         task_data = self.feed_queue[self.current_idx]
         user_id = task_data.get("user_id", "anonymous")
-        gt_decision = Decision(task_data["ground_truth"])
+        gt_decision = Decision(task_data.get("ground_truth", "ESCALATE"))
         gt_category = ContentCategory(task_data.get("category", "SAFE"))
 
         reasons = []
@@ -165,7 +165,7 @@ class ContentModerationEnv:
             step_reward = 0.0
             reasons.append("HITL DEFERRED (0.0): Post pushed to explicit Human Review Queue for asynchronous validation.")
             self.human_review_queue.append({
-                "post_id": task_data["post_id"],
+                "post_id": task_data.get("post_id", "unknown"),
                 "gt_decision": gt_decision,
                 "confidence": action.confidence_score
             })
@@ -186,8 +186,8 @@ class ContentModerationEnv:
                     reasons.append("UX Cost Penalty (0.0): False Positive censorship.")
         else:
             if action.decision == gt_decision:
-                step_reward = 1.0
-                reasons.append("Correct precise intervention.")
+                step_reward = 0.90
+                reasons.append("Correct precise intervention (0.90 ceiling).")
                 self.reputation_ledger[user_id]["violations"] += 1
                 self.reputation_ledger[user_id]["base_trust"] = max(0.0, user_trust - 0.2)
             elif action.decision == Decision.ALLOW:
@@ -214,6 +214,10 @@ class ContentModerationEnv:
                 step_reward = min(1.0, step_reward + 0.3)
             elif action.decision != gt_decision and action.confidence_score > 0.9:
                 step_reward = max(0.0, step_reward - 0.5)
+
+            # Hard ceiling for REMOVE/intervention rewards (UX cost)
+            if gt_decision != Decision.ALLOW:
+                step_reward = min(0.90, step_reward)
 
         # ---- ANTI-EXPLOIT TRACKING ----
         if self.action_history and self.action_history[-1] == action.decision:

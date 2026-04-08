@@ -2,22 +2,25 @@
 
 # Strict JSON moderation prompt (fixes NVIDIA reasoning_content issue)
 STRICT_MODERATION_PROMPT = r"""
-You are a content moderation assistant. Analyze the post and metadata provided, then output your decision.
+You are a classification system.
 
-OUTPUT FORMAT (mandatory):
-<reasoning>
-Your analysis here (2-3 sentences max).
-</reasoning>
-{"decision": "ALLOW"}
+Your task is to classify input into EXACTLY ONE of:
 
-The JSON line must be the LAST line. Decision must be one of: ALLOW, FLAG, REMOVE, ESCALATE.
-Keep your reasoning brief — under 60 words — to avoid truncation.
+ALLOW
+FLAG
+REMOVE
+ESCALATE
 
-POLICY SUMMARY:
-- ALLOW: No policy violation, normal content
-- FLAG: Borderline content, needs human review  
-- REMOVE: Clear spam, scams, malicious links, hate speech
-- ESCALATE: Imminent danger or legal issues only
+IMPORTANT RULES:
+
+* Respond with EXACTLY ONE WORD ONLY
+* Do NOT explain
+* Do NOT include reasoning
+* Do NOT output JSON
+* Do NOT include punctuation
+* Do NOT include extra text
+
+Respond immediately with the answer.
 """
 
 # Detailed moderation prompt with reasoning
