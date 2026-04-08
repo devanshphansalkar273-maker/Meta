@@ -87,13 +87,14 @@ Decide: allow, flag, remove, or escalate?"""
         
         try:
             from openai import OpenAI
+            
             client = OpenAI(
-              base_url="https://integrate.api.nvidia.com/v1",
-              api_key="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"
+              base_url="https://api-inference.huggingface.co/v1/",
+              api_key="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"
             )
 
             completion = client.chat.completions.create(
-              model="meta/llama-3.3-70b-instruct",
+              model="meta-llama/Llama-3.3-70B-Instruct",
               messages=[
                   {"role": "system", "content": system_prompt},
                   {"role": "user", "content": user_prompt}
