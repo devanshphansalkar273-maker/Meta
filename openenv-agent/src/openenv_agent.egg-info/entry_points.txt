@@ -1,0 +1,2 @@
+[console_scripts]
+openenv-agent = openenv_agent.cli:main

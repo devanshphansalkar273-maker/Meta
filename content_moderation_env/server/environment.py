@@ -2,8 +2,13 @@
 
 import logging
 from typing import Dict, Any, Optional
-from env import ContentModerationEnv
-from models import ModerationObservation, ModerationAction
+
+try:
+    from ..env import ContentModerationEnv
+    from ..models import ModerationObservation, ModerationAction
+except ImportError:
+    from env import ContentModerationEnv
+    from models import ModerationObservation, ModerationAction
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +29,7 @@ class EnvironmentManager:
         env = ContentModerationEnv()
         env.reset(task=task)
         self.instances[instance_id] = env
-        self.instance_states[instance_id] = env.state()
+        self.instance_states[instance_id] = env.state
         logger.info(f"Created environment instance: {instance_id} (task={task})")
         return env
     
@@ -45,7 +50,7 @@ class EnvironmentManager:
     def get_state(self, instance_id: str) -> Optional[Dict[str, Any]]:
         """Get state of an environment instance."""
         if instance_id in self.instances:
-            self.instance_states[instance_id] = self.instances[instance_id].state()
+            self.instance_states[instance_id] = self.instances[instance_id].state
             return self.instance_states[instance_id]
         return None
 
@@ -55,7 +60,10 @@ class EnvironmentManager:
             return None
         env = self.instances[instance_id]
         # Import here to avoid circular dependency at module level
-        from models import ModerationAction, Decision, ContentCategory
+        try:
+            from ..models import ModerationAction, Decision, ContentCategory
+        except ImportError:
+            from models import ModerationAction, Decision, ContentCategory
         mod_action = ModerationAction(
             decision=Decision(action.get("decision", "ALLOW")),
             content_category=ContentCategory(action.get("content_category", "SAFE")),
@@ -63,7 +71,7 @@ class EnvironmentManager:
             confidence_score=action.get("confidence_score", 0.5)
         )
         obs, reward, done, info = env.step(mod_action)
-        self.instance_states[instance_id] = env.state()
+        self.instance_states[instance_id] = env.state
         return {
             "observation": {
                 "post_id": obs.post_id,

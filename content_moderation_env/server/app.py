@@ -13,9 +13,32 @@ from fastapi import FastAPI, HTTPException, Body
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from inference import ModerationInferenceEngine
-from models import ModerationObservation, ModerationAction, Decision, ContentCategory, UserMetadata
-from server.environment import env_manager
+# from core.env_server import create_fastapi_app  # TODO: Fix OpenEnv import path
+
+try:
+    from ..inference import ModerationInferenceEngine
+    from ..env import ContentModerationEnv
+    from ..models import (
+        ModerationObservation,
+        ModerationAction,
+        Decision,
+        ContentCategory,
+        UserMetadata,
+    )
+    from .environment import env_manager
+except ImportError:
+    from inference import ModerationInferenceEngine
+    from env import ContentModerationEnv
+    from models import (
+        ModerationObservation,
+        ModerationAction,
+        Decision,
+        ContentCategory,
+        UserMetadata,
+    )
+    from server.environment import env_manager
+
+env = ContentModerationEnv()
 
 # Configure logging
 logging.basicConfig(
@@ -27,8 +50,8 @@ logger = logging.getLogger(__name__)
 # Initialize FastAPI app
 app = FastAPI(
     title="Content Moderation Environment API",
-    description="OpenEnv-compatible REST API for AI content moderation using GPT-4.1",
-    version="1.0.0"
+    description="REST API for inference, environment management, and health checks.",
+    version="1.0.0",
 )
 
 # Request/Response models

@@ -2,7 +2,10 @@
 
 import os
 import logging
+from dotenv import load_dotenv
 from openai import OpenAI
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +94,43 @@ def get_openai_client() -> OpenAI:
     return client
 
 
+def create_nvidia_client(
+    api_key: str = None,
+    use_fallback: bool = True
+) -> tuple[OpenAI | None, bool]:
+    """
+    Create OpenAI-compatible client for NVIDIA API (gpt-oss-120b reasoning model).
+    
+    Args:
+        api_key: NVIDIA API key (default: NVIDIA_API_KEY env var)
+        use_fallback: Return (None, False) on failure
+        
+    Returns:
+        Tuple (client, available). Supports reasoning_content and streaming.
+    """
+    api_key = api_key or os.getenv('NVIDIA_API_KEY')
+    if not api_key:
+        if use_fallback:
+            logger.warning("No NVIDIA_API_KEY found. Fallback to standard OpenAI client.")
+            return None, False
+        raise EnvironmentError("Missing NVIDIA_API_KEY")
+    
+    try:
+        client = OpenAI(
+            api_key=api_key,
+            base_url="https://integrate.api.nvidia.com/v1"
+        )
+        logger.info("NVIDIA client initialized")
+        return client, True
+    except Exception as e:
+        logger.error(f"NVIDIA client init failed: {e}")
+        if use_fallback:
+            return None, False
+        raise
+
+
 if __name__ == "__main__":
+
     # Example usage
     logging.basicConfig(level=logging.INFO)
     

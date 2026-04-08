@@ -1,0 +1,75 @@
+Metadata-Version: 2.4
+Name: openenv-agent
+Version: 0.2.0
+Summary: Agent client for OpenEnv environments - connects RL agents to OpenEnv servers for inference and training
+Author: Croma
+License: MIT
+Keywords: openenv,reinforcement-learning,agent,rl,content-moderation
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: openai>=1.3.0
+Requires-Dist: httpx>=0.25.0
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: click>=8.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.21.0; extra == "dev"
+Requires-Dist: ruff>=0.1.0; extra == "dev"
+Dynamic: license-file
+
+# OpenEnv Agent
+
+Python client library for connecting RL agents to OpenEnv servers.
+
+## Installation
+
+```bash
+pip install openenv-agent
+```
+
+## Quick Start
+
+```python
+from openenv_agent import OpenEnvClient, ModerationAgent
+
+# Connect to an OpenEnv server
+client = OpenEnvClient(base_url="http://localhost:8000")
+
+# Reset environment
+obs = client.reset()
+
+# Use the moderation agent
+agent = ModerationAgent()
+action = agent.predict(obs)
+
+# Step the environment
+next_obs, reward, done, info = client.step(action)
+```
+
+## CLI Usage
+
+```bash
+# Run agent against a server
+openenv-agent run http://localhost:8000
+
+# Interactive mode
+openenv-agent interactive http://localhost:8000
+
+# Evaluate on a dataset
+openenv-agent eval http://localhost:8000 --dataset ./data.json
+```
+
+## Features
+
+- Async/sync OpenEnv client with Gymnasium-style API
+- Built-in ModerationAgent for content moderation environments
+- Environment loader from openenv.yaml configs
+- CLI tool for easy server interaction

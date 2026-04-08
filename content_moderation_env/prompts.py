@@ -1,43 +1,24 @@
 """Content Moderation Prompts for GPT-4.1."""
 
-# Strict, minimal moderation prompt
-STRICT_MODERATION_PROMPT = """You are a strict AI content moderation system.
+# Strict JSON moderation prompt (fixes NVIDIA reasoning_content issue)
+STRICT_MODERATION_PROMPT = r"""
+You are a content moderation assistant. Analyze the post and metadata provided, then output your decision.
 
-Classify the post into EXACTLY ONE of:
+OUTPUT FORMAT (mandatory):
+<reasoning>
+Your analysis here (2-3 sentences max).
+</reasoning>
+{"decision": "ALLOW"}
 
-ALLOW
-FLAG
-REMOVE
-ESCALATE
+The JSON line must be the LAST line. Decision must be one of: ALLOW, FLAG, REMOVE, ESCALATE.
+Keep your reasoning brief — under 60 words — to avoid truncation.
 
----
-
-## RULES
-
-* Respond with EXACTLY ONE WORD
-* No explanation
-* No punctuation
-
----
-
-## DECISION GUIDELINES
-
-ALLOW → clearly safe, normal content
-FLAG → suspicious or borderline
-REMOVE → clearly harmful (hate, abuse, illegal)
-ESCALATE → unclear or requires human review
-
----
-
-## IMPORTANT
-
-Do NOT over-flag safe content.
-
----
-
-## FINAL INSTRUCTION
-
-Respond with EXACTLY ONE WORD ONLY."""
+POLICY SUMMARY:
+- ALLOW: No policy violation, normal content
+- FLAG: Borderline content, needs human review  
+- REMOVE: Clear spam, scams, malicious links, hate speech
+- ESCALATE: Imminent danger or legal issues only
+"""
 
 # Detailed moderation prompt with reasoning
 DETAILED_MODERATION_PROMPT = """You are a content moderation expert for social media platforms.

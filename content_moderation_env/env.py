@@ -3,14 +3,24 @@ import logging
 from typing import Tuple, Dict, Any, List
 from pathlib import Path
 
-from models import (
-    Decision, 
-    ContentCategory,
-    ModerationObservation, 
-    ModerationAction, 
-    UserMetadata,
-    ModerationReward
-)
+try:
+    from .models import (
+        Decision,
+        ContentCategory,
+        ModerationObservation,
+        ModerationAction,
+        UserMetadata,
+        ModerationReward,
+    )
+except ImportError:
+    from models import (
+        Decision,
+        ContentCategory,
+        ModerationObservation,
+        ModerationAction,
+        UserMetadata,
+        ModerationReward,
+    )
 
 logger = logging.getLogger(__name__)
 
