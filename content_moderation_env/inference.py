@@ -39,7 +39,7 @@ class ModerationInferenceEngine:
         if self.use_api:
             self.client = OpenAI(
                 api_key=self.api_key,
-                base_url="https://openrouter.ai/api/v1"
+                base_url="https://integrate.api.nvidia.com/v1"
             )
     
     def get_moderation_decision(self, obs) -> ModerationAction:
@@ -82,32 +82,43 @@ Decide: allow, flag, remove, or escalate?"""
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=0,
-                max_tokens=5,
-                timeout=10
+                max_tokens=2,
+                timeout=30
             )
             
             # Validate and clean response
-            content = response.choices[0].message.content.strip().lower()
-            valid_decisions = ["allow", "flag", "remove", "escalate"]
+            message = response.choices[0].message
+            # Reasoning models (e.g., gpt-oss-120b) may return content in reasoning_content
+            raw_content = message.content or message.reasoning_content or ""
+            content = raw_content.strip().lower()
+            valid_decisions = ["ALLOW", "FLAG", "REMOVE", "ESCALATE"]
             
-            # Parse simple one-word response
+            content_upper = content.strip().upper()
+            
+            # Strict: must be EXACT single word match
+            words = content_upper.split()
             decision_found = None
-            for valid_decision in valid_decisions:
-                if valid_decision in content:
-                    decision_found = valid_decision
-                    break
+            
+            if len(words) == 1 and words[0] in valid_decisions:
+                decision_found = words[0]
+            
+            # If not exact, safe parser: check if any valid word present
+            if not decision_found:
+                for word in words:
+                    if word in valid_decisions:
+                        decision_found = word
+                        break
             
             if not decision_found:
-                # Fallback if unexpected response
                 logger.warning(f"Unexpected API response: {content}")
-                decision_found = "escalate"
+                decision_found = "ESCALATE"
             
             # Map to enum values
             decision_map = {
-                "allow": ("ALLOW", "SAFE", "API decision: Allow"),
-                "flag": ("FLAG", "SAFE", "API decision: Flag for review"),
-                "remove": ("REMOVE", "HARASSMENT", "API decision: Remove"),
-                "escalate": ("ESCALATE", "SAFE", "API decision: Escalate")
+                "ALLOW": ("ALLOW", "SAFE", "API decision: Allow"),
+                "FLAG": ("FLAG", "SAFE", "API decision: Flag for review"),
+                "REMOVE": ("REMOVE", "HARASSMENT", "API decision: Remove"),
+                "ESCALATE": ("ESCALATE", "SAFE", "API decision: Escalate")
             }
             
             decision_str, category_str, reasoning = decision_map[decision_found]
@@ -123,65 +134,12 @@ Decide: allow, flag, remove, or escalate?"""
             raise
     
     def _fallback_decision(self, obs) -> ModerationAction:
-        """
-        Fallback keyword-based moderation when API is unavailable.
-        Uses rule-based heuristics for fast, reliable decisions.
-        """
-        post_lower = obs.post_body.lower()
-        harmful_keywords = {
-            'remove': ['kill', 'bomb', 'explode', 'shoot', 'murder'],
-            'flag': ['hate', 'stupid', 'dumb', 'idiotic', 'scum'],
-            'spam': ['click here', 'earn money', 'buy now', 'http://', 'https://']
-        }
-        
-        # Check for harmful keywords
-        for keyword in harmful_keywords['remove']:
-            if keyword in post_lower:
-                return ModerationAction(
-                    decision=Decision.REMOVE,
-                    content_category=ContentCategory.HARASSMENT,
-                    reasoning=f"Fallback: Detected harmful keyword '{keyword}'",
-                    confidence_score=0.6
-                )
-        
-        for keyword in harmful_keywords['flag']:
-            if keyword in post_lower:
-                return ModerationAction(
-                    decision=Decision.FLAG,
-                    content_category=ContentCategory.HATE_SPEECH,
-                    reasoning=f"Fallback: Detected potentially offensive keyword '{keyword}'",
-                    confidence_score=0.5
-                )
-        
-        # Check for spam patterns
-        spam_score = 0
-        for keyword in harmful_keywords['spam']:
-            if keyword in post_lower:
-                spam_score += 1
-        
-        if spam_score >= 2 or len(post_lower) > 200 and post_lower.count('http') > 2:
-            return ModerationAction(
-                decision=Decision.REMOVE,
-                content_category=ContentCategory.SPAM,
-                reasoning="Fallback: Detected spam patterns",
-                confidence_score=0.5
-            )
-        
-        # Check user trust and reports
-        if obs.metadata.author_trust_score < 0.3 and obs.metadata.reports_count > 5:
-            return ModerationAction(
-                decision=Decision.FLAG,
-                content_category=ContentCategory.SAFE,
-                reasoning="Fallback: Low-trust user with multiple reports",
-                confidence_score=0.4
-            )
-        
-        # Default to allow
+        """Fallback: Always ESCALATE per constraints when API unavailable."""
         return ModerationAction(
-            decision=Decision.ALLOW,
+            decision=Decision.ESCALATE,
             content_category=ContentCategory.SAFE,
-            reasoning="Fallback: No harmful patterns detected",
-            confidence_score=0.8
+            reasoning="Fallback: ESCALATE (API unavailable)",
+            confidence_score=0.5
         )
 
 
