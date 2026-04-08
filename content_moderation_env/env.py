@@ -21,20 +21,41 @@ class ContentModerationEnv:
     def __init__(self, dataset_dir: str = "datasets"):
         base_dir = Path(__file__).parent
         self.dataset_dir = base_dir / dataset_dir
-        self.feed_queue = []
-        self._load_continuous_feed()
+        self.tasks = self._load_tasks()
+        self.current_task = "easy"
+        self.step_count = 0
         self.reset()
 
-    def _load_continuous_feed(self):
-        files = ["easy_spam.json", "medium_toxic.json", "hard_mixed.json"]
-        self.feed_queue = []
-        for file in files:
-            path = self.dataset_dir / file
+    def _load_tasks(self) -> Dict[str, List[Dict]]:
+        """Load datasets into task buckets by difficulty."""
+        task_files = {
+            "easy": "easy_spam.json",
+            "medium": "medium_toxic.json",
+            "hard": "hard_mixed.json",
+        }
+        tasks = {}
+        for difficulty, filename in task_files.items():
+            path = self.dataset_dir / filename
             if path.exists():
                 with open(path, 'r', encoding='utf-8') as f:
-                    self.feed_queue.extend(json.load(f))
+                    tasks[difficulty] = json.load(f)
+            else:
+                tasks[difficulty] = []
+        return tasks
 
-    def reset(self) -> ModerationObservation:
+    def grade_action(self, action: Decision, correct_label: Decision) -> float:
+        """Grader: returns reward based on action correctness."""
+        if action == correct_label:
+            return 1.0
+        elif action in [Decision.FLAG, Decision.ESCALATE]:
+            return 0.5
+        return 0.0
+
+    def reset(self, task: str = "easy") -> ModerationObservation:
+        if task not in self.tasks:
+            raise ValueError(f"Invalid task '{task}'. Choose from: {list(self.tasks.keys())}")
+        self.current_task = task
+        self.feed_queue = self.tasks[task]
         self.current_idx = 0
         self.done = False
         self.cumulative_reward = 0.0
@@ -140,66 +161,68 @@ class ContentModerationEnv:
             })
         elif gt_decision == Decision.ALLOW:
             if action.decision == Decision.ALLOW:
-                step_reward += 1.0
+                step_reward = 1.0
                 reasons.append("Correctly allowed safe content.")
             else:
-                # FALSE POSITIVE PENALTY
+                # FALSE POSITIVE: penalize but keep in [0, 1]
                 if user_trust > 0.9:
-                    step_reward -= 2.0
-                    reasons.append("VIP Penalty (-2.0): Falsely suppressed highly trusted active platform user.")
+                    step_reward = 0.0
+                    reasons.append("VIP Penalty (0.0): Falsely suppressed highly trusted active platform user.")
                 elif user_violations > 0:
-                    step_reward -= 0.5
-                    reasons.append("Lenient UX Cost (-0.5): Falsely suppressed safe content, but justified caution given user's active shift violations.")
+                    step_reward = 0.3
+                    reasons.append("Lenient UX Cost (0.3): Falsely suppressed safe content, but justified caution given user's active shift violations.")
                 else:
-                    step_reward -= 1.0
-                    reasons.append("UX Cost Penalty (-1.0): False Positive censorship.")
-        else: 
+                    step_reward = 0.0
+                    reasons.append("UX Cost Penalty (0.0): False Positive censorship.")
+        else:
             if action.decision == gt_decision:
-                step_reward += 1.0
+                step_reward = 1.0
                 reasons.append("Correct precise intervention.")
                 self.reputation_ledger[user_id]["violations"] += 1
                 self.reputation_ledger[user_id]["base_trust"] = max(0.0, user_trust - 0.2)
             elif action.decision == Decision.ALLOW:
-                # FALSE NEGATIVE PENALTY
+                # FALSE NEGATIVE: worst outcome, heavily penalized
                 if user_violations >= 1:
-                    step_reward -= 6.0
-                    reasons.append(f"NEGLIGENCE (-6.0): Allowed harmful repeated content from an active offender.")
+                    step_reward = 0.0
+                    reasons.append(f"NEGLIGENCE (0.0): Allowed harmful repeated content from an active offender.")
                 else:
-                    step_reward -= 5.0
-                    reasons.append(f"MASSIVE COST (-5.0): Failed to address harmful content ({gt_category.value}).")
+                    step_reward = 0.0
+                    reasons.append(f"MASSIVE COST (0.0): Failed to address harmful content ({gt_category.value}).")
             else:
-                step_reward += 0.2
-                self.reputation_ledger[user_id]["violations"] += 1 
-                reasons.append("Partial progress (+0.2): Triggered intervention, but sub-optimal vector.")
+                step_reward = 0.5
+                self.reputation_ledger[user_id]["violations"] += 1
+                reasons.append("Partial progress (0.5): Triggered intervention, but sub-optimal vector.")
 
-        # ---- CATEGORY + CONFIDENCE BONUSES ----
+        # ---- CATEGORY + CONFIDENCE BONUSES (clamped to stay in [0, 1]) ----
         if action.decision != Decision.ESCALATE:
             if action.content_category == gt_category:
-                step_reward += 0.2
+                step_reward = min(1.0, step_reward + 0.2)
             else:
-                step_reward -= 0.1
+                step_reward = max(0.0, step_reward - 0.1)
 
             if action.decision != gt_decision and action.confidence_score < 0.4:
-                step_reward += 0.3
+                step_reward = min(1.0, step_reward + 0.3)
             elif action.decision != gt_decision and action.confidence_score > 0.9:
-                step_reward -= 0.5
+                step_reward = max(0.0, step_reward - 0.5)
 
         # ---- ANTI-EXPLOIT TRACKING ----
         if self.action_history and self.action_history[-1] == action.decision:
             self.consecutive_same_action += 1
         else:
             self.consecutive_same_action = 0
-            
+
         self.action_history.append(action.decision)
 
+        # Anti-exploit: penalize repetition without going below 0
         if self.consecutive_same_action >= 3:
-            penalty = -0.5 * (self.consecutive_same_action - 2)
-            step_reward += penalty
-            reasons.append(f"EXPLOIT TRACKER ({penalty}): Repetitive action decay active.")
+            exploit_penalty = 0.5 * (self.consecutive_same_action - 2)
+            step_reward = max(0.0, step_reward - exploit_penalty)
+            reasons.append(f"EXPLOIT TRACKER (-{exploit_penalty:.1f}): Repetitive action decay active.")
 
         self.cumulative_reward += step_reward
 
         self.current_idx += 1
+        self.step_count += 1
         
         hitl_payout = 0.0
         if self.current_idx >= len(self.feed_queue):
@@ -209,15 +232,18 @@ class ContentModerationEnv:
                 reasons.append(f"\n--- BATCH PROCESSING HITL QUEUE ({len(self.human_review_queue)} posts) ---")
                 for review in self.human_review_queue:
                     if review["gt_decision"] == Decision.ESCALATE:
-                        hitl_payout += 1.5
-                        reasons.append(f"✅ {review['post_id']}: Optimal Escalation (+1.5)")
+                        hitl_payout += 1.0
+                        reasons.append(f"✅ {review['post_id']}: Optimal Escalation (+1.0)")
                     else:
-                        hitl_payout -= 1.0
-                        reasons.append(f"❌ {review['post_id']}: Obvious Case - Frivolous Escalation Waste (-1.0)")
-                step_reward += hitl_payout
-                self.cumulative_reward += hitl_payout
+                        reasons.append(f"❌ {review['post_id']}: Obvious Case - Frivolous Escalation Waste")
+                step_reward = max(0.0, min(1.0, step_reward + hitl_payout))
+                self.cumulative_reward += step_reward
                 self.human_review_queue.clear()
-        
+
+        # ---- CLAMP FINAL REWARD ----
+        step_reward = max(0.0, min(1.0, step_reward))
+        self.cumulative_reward = max(0.0, min(1.0, self.cumulative_reward))
+
         # Override payout description into info payload on end state
         info = {
             "reward_details": ModerationReward(score=step_reward, reason=" | ".join(reasons)).model_dump(),
@@ -237,6 +263,8 @@ class ContentModerationEnv:
         recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
         
         return {
+            "task": self.current_task,
+            "step_count": self.step_count,
             "current_step": self.current_idx,
             "done": self.done,
             "cumulative_reward": round(self.cumulative_reward, 3),

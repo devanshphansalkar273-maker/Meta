@@ -16,15 +16,16 @@ class EnvironmentManager:
         self.instances: Dict[str, ContentModerationEnv] = {}
         self.instance_states: Dict[str, Dict[str, Any]] = {}
     
-    def create_instance(self, instance_id: str) -> ContentModerationEnv:
+    def create_instance(self, instance_id: str, task: str = "easy") -> ContentModerationEnv:
         """Create a new environment instance."""
         if len(self.instances) >= self.max_instances:
             raise RuntimeError(f"Maximum concurrent environments ({self.max_instances}) reached")
-        
+
         env = ContentModerationEnv()
+        env.reset(task=task)
         self.instances[instance_id] = env
         self.instance_states[instance_id] = env.state()
-        logger.info(f"Created environment instance: {instance_id}")
+        logger.info(f"Created environment instance: {instance_id} (task={task})")
         return env
     
     def get_instance(self, instance_id: str) -> Optional[ContentModerationEnv]:
@@ -47,7 +48,47 @@ class EnvironmentManager:
             self.instance_states[instance_id] = self.instances[instance_id].state()
             return self.instance_states[instance_id]
         return None
-    
+
+    def step_instance(self, instance_id: str, action: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Step an environment instance with an action."""
+        if instance_id not in self.instances:
+            return None
+        env = self.instances[instance_id]
+        # Import here to avoid circular dependency at module level
+        from models import ModerationAction, Decision, ContentCategory
+        mod_action = ModerationAction(
+            decision=Decision(action.get("decision", "ALLOW")),
+            content_category=ContentCategory(action.get("content_category", "SAFE")),
+            reasoning=action.get("reasoning", ""),
+            confidence_score=action.get("confidence_score", 0.5)
+        )
+        obs, reward, done, info = env.step(mod_action)
+        self.instance_states[instance_id] = env.state()
+        return {
+            "observation": {
+                "post_id": obs.post_id,
+                "post_body": obs.post_body,
+                "metadata": {
+                    "user_id": obs.metadata.user_id,
+                    "timestamp": obs.metadata.timestamp,
+                    "reports_count": obs.metadata.reports_count,
+                    "author_trust_score": obs.metadata.author_trust_score,
+                    "account_age_days": obs.metadata.account_age_days,
+                    "virality_score": obs.metadata.virality_score,
+                    "active_global_event": obs.metadata.active_global_event,
+                    "temporary_rule": obs.metadata.temporary_rule,
+                    "user_appeal_statement": obs.metadata.user_appeal_statement,
+                    "media_vision_tags": obs.metadata.media_vision_tags,
+                    "visual_text_mismatch_flag": obs.metadata.visual_text_mismatch_flag,
+                },
+                "context": obs.context,
+            },
+            "reward": reward,
+            "done": done,
+            "info": info,
+            "state": self.instance_states[instance_id],
+        }
+
     def list_instances(self) -> Dict[str, Dict[str, Any]]:
         """List all active instances and their states."""
         return {

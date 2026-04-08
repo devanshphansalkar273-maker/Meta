@@ -4,6 +4,7 @@ Client SDK for Content Moderation OpenEnv API.
 Provides Python API for interacting with the moderation environment.
 """
 
+import os
 import requests
 import logging
 from typing import Dict, Any, Optional, List
@@ -35,12 +36,13 @@ class EnvironmentState:
 class ContentModerationClient:
     """Python client for Content Moderation OpenEnv API."""
     
-    def __init__(self, base_url: str = "http://localhost:8000"):
+    def __init__(self, base_url: str = os.getenv("API_BASE_URL", "http://localhost:8000")):
         """
         Initialize the client.
         
         Args:
-            base_url: Base URL of the API server (default: localhost:8000)
+            base_url: Base URL of the API server (default: http://localhost:8000,
+                      overridable via API_BASE_URL env var)
         """
         self.base_url = base_url.rstrip('/')
         self.session = requests.Session()

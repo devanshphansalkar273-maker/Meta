@@ -57,16 +57,41 @@ class InferenceResponse(BaseModel):
     confidence_score: float
 
 
+class StepRequest(BaseModel):
+    decision: str
+    content_category: str = "SAFE"
+    reasoning: str = ""
+    confidence_score: float = 0.5
+
+
+class StepResponse(BaseModel):
+    observation: dict
+    reward: float
+    done: bool
+    info: dict
+    state: dict
+
+
 class EnvironmentState(BaseModel):
     instance_id: str
     current_step: int
     cumulative_reward: float
     done: bool
     metrics: Dict[str, Any]
+    task: Optional[str] = None
+    step_count: Optional[int] = None
 
 
 # Global inference engine
 inference_engine = ModerationInferenceEngine()
+
+
+@app.on_event("startup")
+async def on_startup():
+    """Log server address on startup."""
+    port = int(os.getenv("PORT", 8000))
+    logger.info(f"Server running at http://localhost:{port}")
+    print(f"Server running at http://localhost:{port}")
 
 
 @app.get("/health", response_model=HealthResponse, tags=["Health"])
@@ -134,18 +159,19 @@ async def run_inference(request: InferenceRequest) -> InferenceResponse:
 
 
 @app.post("/environment/create", response_model=EnvironmentState, tags=["Environment"])
-async def create_environment(instance_id: str = Body(..., embed=True)) -> EnvironmentState:
+async def create_environment(instance_id: str = Body(...), task: str = Body(default="easy")) -> EnvironmentState:
     """
     Create a new environment instance.
-    
+
     Args:
         instance_id: Unique identifier for the environment instance
-        
+        task: Task difficulty - "easy", "medium", or "hard"
+
     Returns:
         EnvironmentState with initial state information
     """
     try:
-        env = env_manager.create_instance(instance_id)
+        env = env_manager.create_instance(instance_id, task=task)
         state = env_manager.get_state(instance_id)
         
         return EnvironmentState(
@@ -153,7 +179,9 @@ async def create_environment(instance_id: str = Body(..., embed=True)) -> Enviro
             current_step=state["current_step"],
             cumulative_reward=state["cumulative_reward"],
             done=state["done"],
-            metrics=state["metrics"]
+            metrics=state["metrics"],
+            task=state.get("task"),
+            step_count=state.get("step_count")
         )
     except Exception as e:
         logger.error(f"Environment creation error: {e}")
@@ -164,17 +192,39 @@ async def create_environment(instance_id: str = Body(..., embed=True)) -> Enviro
 async def get_environment_state(instance_id: str) -> EnvironmentState:
     """Get current state of an environment instance."""
     state = env_manager.get_state(instance_id)
-    
+
     if not state:
         raise HTTPException(status_code=404, detail="Environment instance not found")
-    
+
     return EnvironmentState(
         instance_id=instance_id,
         current_step=state["current_step"],
         cumulative_reward=state["cumulative_reward"],
         done=state["done"],
-        metrics=state["metrics"]
+        metrics=state["metrics"],
+        task=state.get("task"),
+        step_count=state.get("step_count")
     )
+
+
+@app.post("/environment/{instance_id}/step", response_model=StepResponse, tags=["Environment"])
+async def step_environment(instance_id: str, request: StepRequest) -> StepResponse:
+    """
+    Step an environment instance with an action.
+
+    Args:
+        instance_id: Environment instance identifier
+        request: Step request with action details
+
+    Returns:
+        StepResponse with observation, reward, done, info, and state
+    """
+    result = env_manager.step_instance(instance_id, request.model_dump())
+
+    if not result:
+        raise HTTPException(status_code=404, detail="Environment instance not found")
+
+    return StepResponse(**result)
 
 
 @app.get("/environment/list", response_model=Dict[str, EnvironmentState], tags=["Environment"])
@@ -239,10 +289,12 @@ async def general_exception_handler(request, exc):
 
 if __name__ == "__main__":
     import uvicorn
-    
+
+    port = int(os.getenv("PORT", 8000))
+    print(f"Server running at http://localhost:{port}")
     uvicorn.run(
         app,
         host="0.0.0.0",
-        port=8000,
+        port=port,
         log_level="info"
     )
