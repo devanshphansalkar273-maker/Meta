@@ -249,31 +249,18 @@ class ContentModerationEnv:
             "reward_details": ModerationReward(score=step_reward, reason=" | ".join(reasons)).model_dump(),
             "hitl_batch_payout": hitl_payout,
             "cumulative_reward": self.cumulative_reward,
-            "metrics": self.state()["metrics"]
+            "metrics": self.metrics
         }
 
         return self._get_current_observation(), step_reward, self.done, info
 
+    @property
     def state(self) -> Dict[str, Any]:
-        tp = self.metrics["true_positives"]
-        fp = self.metrics["false_positives"]
-        fn = self.metrics["false_negatives"]
-        
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-        
         return {
             "task": self.current_task,
             "step_count": self.step_count,
-            "current_step": self.current_idx,
-            "done": self.done,
-            "cumulative_reward": round(self.cumulative_reward, 3),
-            "metrics": {
-                **self.metrics,
-                "precision": round(precision, 3),
-                "recall": round(recall, 3),
-                "f1_score": round(2 * (precision * recall) / (precision + recall), 3) if precision + recall > 0 else 0.0,
-            }
+            "current_index": self.current_idx,
+            "done": self.done
         }
 
     def _get_dummy_obs(self) -> ModerationObservation:

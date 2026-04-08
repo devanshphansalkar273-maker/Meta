@@ -89,7 +89,7 @@ inference_engine = ModerationInferenceEngine()
 @app.on_event("startup")
 async def on_startup():
     """Log server address on startup."""
-    port = int(os.getenv("PORT", 8000))
+    port = int(os.getenv("PORT", "8000"))
     logger.info(f"Server running at http://localhost:{port}")
     print(f"Server running at http://localhost:{port}")
 

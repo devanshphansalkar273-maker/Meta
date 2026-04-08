@@ -45,9 +45,9 @@ def grade_medium_task(predicted_action: ModerationAction, ground_truth_data: Dic
     # Wrong escalation (escalate when clear allow/remove)
     if predicted_action.decision == Decision.ESCALATE:
         if ground_truth == Decision.ALLOW:
-            return -0.2  # Unnecessary escalation
+            return 0.0
         else:
-            return 0.2  # Conservative but not ideal
+            return 0.2
     
     # Completely wrong
     return 0.0

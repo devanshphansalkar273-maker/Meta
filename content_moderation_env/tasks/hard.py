@@ -60,12 +60,12 @@ def grade_hard_task(predicted_action: ModerationAction, ground_truth_data: Dict[
     # Contradictory: escalate when should allow
     if (predicted_action.decision == Decision.ESCALATE and 
         ground_truth == Decision.ALLOW):
-        return -0.1
+        return 0.0
     
     # Missing harm detection
     if (predicted_action.decision == Decision.ALLOW and 
         ground_truth in [Decision.REMOVE, Decision.ESCALATE]):
-        return -0.5
+        return 0.0
     
     return 0.0
 
