@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Test strict moderation prompt with GPT-4.1."""
+"""Test strict moderation prompt with Llama-3.3-70B-Instruct."""
 
 import os
 from openai import OpenAI
 
 # Initialize client
-api_key = os.getenv("HF_TOKEN") or os.getenv("OPENROUTER_API_KEY")
+api_key = os.getenv("HF_TOKEN")
 if not api_key:
     print("❌ No API key found. Set HF_TOKEN environment variable.")
     exit(1)
 
 client = OpenAI(
     api_key=api_key,
-    base_url="https://openrouter.ai/api/v1"
+    base_url="https://router.huggingface.co/v1"
 )
 
 # Test moderation prompt
@@ -37,7 +37,7 @@ for post, expected in test_cases:
     
     try:
         response = client.chat.completions.create(
-            model="openai/gpt-4.1",
+            model="meta-llama/Llama-3.3-70B-Instruct",
             messages=[
                 {"role": "system", "content": MODERATION_PROMPT},
                 {"role": "user", "content": post}

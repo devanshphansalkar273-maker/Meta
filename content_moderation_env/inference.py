@@ -37,6 +37,11 @@ def parse_action_response(content: str) -> ModerationAction:
         data = json.loads(content)
         decision_str = data.get("decision", "ESCALATE").upper()
         category_str = data.get("category", "SAFE").upper()
+        
+        valid_categories = {c.value for c in ContentCategory}
+        if category_str not in valid_categories:
+            category_str = "SAFE"
+        
         confidence = max(0.0, min(1.0, data.get("confidence", 0.5)))
         reasoning = data.get("reasoning", "API decision")
     except Exception:

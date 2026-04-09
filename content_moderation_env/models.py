@@ -16,6 +16,7 @@ class ContentCategory(str, Enum):
     SPAM = "SPAM"
     TOXIC = "TOXIC"
     HARASSMENT = "HARASSMENT"
+    HATE_SPEECH = "HATE_SPEECH"
     VIOLENCE = "VIOLENCE"
     SEXUAL = "SEXUAL"
     SELF_HARM = "SELF_HARM"

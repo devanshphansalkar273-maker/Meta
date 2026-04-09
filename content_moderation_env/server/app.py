@@ -125,7 +125,7 @@ async def health_check() -> HealthResponse:
     Returns:
         HealthResponse with status and API configuration info
     """
-    api_key_exists = bool(os.getenv('HF_TOKEN') or os.getenv('OPENROUTER_API_KEY'))
+    api_key_exists = bool(os.getenv('HF_TOKEN'))
     
     return HealthResponse(
         status="healthy",
@@ -281,7 +281,7 @@ async def delete_environment(instance_id: str) -> Dict[str, str]:
 @app.get("/status", response_model=Dict[str, Any], tags=["Status"])
 async def get_status() -> Dict[str, Any]:
     """Get detailed service status."""
-    api_key_exists = bool(os.getenv('HF_TOKEN') or os.getenv('OPENROUTER_API_KEY'))
+    api_key_exists = bool(os.getenv('HF_TOKEN'))
     
     return {
         "service": "Content Moderation Environment API",
@@ -289,8 +289,8 @@ async def get_status() -> Dict[str, Any]:
         "timestamp": datetime.utcnow().isoformat(),
         "api_version": "1.0.0",
         "configuration": {
-            "api_base_url": "https://openrouter.ai/api/v1",
-            "model": "openai/gpt-4.1",
+            "api_base_url": "https://router.huggingface.co/v1",
+            "model": "meta-llama/Llama-3.3-70B-Instruct",
             "has_api_key": api_key_exists,
             "fallback_enabled": True
         },

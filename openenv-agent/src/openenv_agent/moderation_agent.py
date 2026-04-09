@@ -32,7 +32,7 @@ CATEGORY_MAP = {
 
 class ModerationAgent(BaseAgent):
     """
-    Content moderation agent using OpenAI API via OpenRouter.
+    Content moderation agent using OpenAI API via Hugging Face Router.
 
     Connects to OpenEnv content_moderation_env servers and makes
     moderation decisions (ALLOW, FLAG, REMOVE, ESCALATE).
@@ -40,13 +40,13 @@ class ModerationAgent(BaseAgent):
 
     def __init__(self, config: Optional[AgentConfig] = None):
         super().__init__(config or AgentConfig(name="ModerationAgent"))
-        self.api_key = os.getenv("HF_TOKEN") or os.getenv("OPENROUTER_API_KEY")
+        self.api_key = os.getenv("HF_TOKEN")
         self.use_api = bool(self.api_key)
 
         if self.use_api:
             self.client = OpenAI(
                 api_key=self.api_key,
-                base_url="https://openrouter.ai/api/v1"
+                base_url="https://router.huggingface.co/v1"
             )
         else:
             logger.warning("No API key found. Using fallback mode.")
@@ -80,7 +80,7 @@ class ModerationAgent(BaseAgent):
         user_prompt = self._build_prompt(post_body, metadata, context)
 
         response = self.client.chat.completions.create(
-            model="openai/gpt-4.1",
+            model="meta-llama/Llama-3.3-70B-Instruct",
             messages=[
                 {
                     "role": "system",

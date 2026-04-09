@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
-"""Test API connection to OpenRouter with GPT-4.1."""
+"""Test API connection to HuggingFace Router with Llama-3.3-70B-Instruct."""
 
 import os
 import sys
 from openai import OpenAI
 
 # Get credentials from environment
-api_key = os.getenv("HF_TOKEN") or os.getenv("OPENROUTER_API_KEY")
-api_base_url = os.getenv("API_BASE_URL", "https://openrouter.ai/api/v1")
-model_name = os.getenv("MODEL_NAME", "openai/gpt-4.1")
+api_key = os.getenv("HF_TOKEN")
+api_base_url = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+model_name = os.getenv("MODEL_NAME", "meta-llama/Llama-3.3-70B-Instruct")
 
 print("=" * 60)
-print("🧪 OpenRouter API Connection Test")
+print("🧪 HuggingFace Router API Connection Test")
 print("=" * 60)
 
 # Check credentials
 if not api_key:
     print("❌ ERROR: No API key found!")
-    print("   Set HF_TOKEN or OPENROUTER_API_KEY environment variable")
+    print("   Set HF_TOKEN environment variable")
     sys.exit(1)
 
 print(f"✓ API Key: {api_key[:20]}...")
@@ -66,7 +66,7 @@ except Exception as e:
     print(f"❌ API call failed: {e}")
     print()
     print("Possible causes:")
-    print("  1. Insufficient OpenRouter credits")
+    print("  1. Invalid or missing HF_TOKEN")
     print("  2. Invalid API key")
     print("  3. Network connectivity issue")
     print("  4. Invalid model name")
