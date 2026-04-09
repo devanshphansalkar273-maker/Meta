@@ -6,9 +6,9 @@
 2. [x] Implement /reset in inference.py (server/app.py → root)
 3. [x] Move server/Dockerfile → root
 4. [ ] Copy requirements.txt root
-5. [ ] Update openenv.yaml
-6. [x] Docker test skipped (daemon down), root files ready
-7. [ ] Re-push Space for validator test
+5. [x] SyntaxError fixed (colons removed from @app decorators)
+6. [ ] Local syntax test
+7. [ ] Re-push Space
 4. [ ] Update openenv.yaml entrypoint
 5. [ ] Test docker build/run + curl /reset
 6. [ ] openenv validate .
