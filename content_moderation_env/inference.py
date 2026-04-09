@@ -26,7 +26,7 @@ async def reset():
 @app.post("/step")
 async def step(req: StepRequest):
     return {
-        "observation": {"message": f"step ok", "action": req.action},
+        "observation": {"message": "step ok", "action": req.action},
         "reward": 0.0,
         "done": False,
         "info": {}
