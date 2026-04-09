@@ -1,3 +1,11 @@
+---
+title: Content Moderation OpenEnv
+emoji: 🚫
+colorFrom: blue
+colorTo: purple
+sdk: docker
+---
+
 # Content Moderation OpenEnv Environment 🚀
 
 ## Overview & Motivation
