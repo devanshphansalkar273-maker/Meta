@@ -1,4 +1,4 @@
-"""OpenAI Client Factory - Initialize OpenAI client with OpenRouter API."""
+"""OpenAI-compatible client factory for Hugging Face Router and fallback providers."""
 
 import os
 import logging
@@ -16,36 +16,21 @@ def create_openai_client(
     use_fallback: bool = True
 ) -> tuple[OpenAI | None, bool]:
     """
-    Create an OpenAI client configured for OpenRouter API.
-    
+    Create an OpenAI-compatible client configured for Hugging Face Router by default.
+
     Args:
         api_key: API key (default: HF_TOKEN or OPENROUTER_API_KEY env var)
-        base_url: API base URL (default: https://openrouter.ai/api/v1)
+        base_url: API base URL (default: https://router.huggingface.co/v1)
         use_fallback: If True, returns (None, False) on missing credentials instead of raising
-        
+
     Returns:
         Tuple of (client, is_api_available)
         - client: OpenAI client instance or None
         - is_api_available: True if client is ready, False if fallback needed
-        
-    Examples:
-        # Standard usage
-        client, has_api = create_openai_client()
-        if has_api:
-            response = client.chat.completions.create(...)
-        else:
-            # Use fallback logic
-            pass
-        
-        # With custom credentials
-        client, has_api = create_openai_client(
-            api_key="sk_or_...",
-            base_url="https://openrouter.ai/api/v1"
-        )
     """
     # Get credentials from arguments or environment
     api_key = api_key or os.getenv('HF_TOKEN') or os.getenv('OPENROUTER_API_KEY')
-    base_url = base_url or os.getenv('API_BASE_URL') or "https://openrouter.ai/api/v1"
+    base_url = base_url or os.getenv('API_BASE_URL') or "https://router.huggingface.co/v1"
     
     # Check if we have API credentials
     if not api_key:
@@ -54,7 +39,7 @@ def create_openai_client(
             return None, False
         else:
             raise EnvironmentError(
-                "Missing API credentials. Set HF_TOKEN, OPENROUTER_API_KEY, or provide api_key argument."
+                "Missing API credentials. Set HF_TOKEN (preferred for Hugging Face), OPENROUTER_API_KEY, or provide api_key argument."
             )
     
     try:
@@ -62,7 +47,7 @@ def create_openai_client(
             api_key=api_key,
             base_url=base_url
         )
-        logger.info(f"OpenAI client initialized with base_url: {base_url}")
+        logger.info(f"OpenAI-compatible client initialized with base_url: {base_url}")
         return client, True
     except Exception as e:
         logger.error(f"Failed to initialize OpenAI client: {e}")
@@ -138,8 +123,8 @@ if __name__ == "__main__":
     client, api_available = create_openai_client()
     
     if api_available:
-        print("✓ OpenAI client ready")
-        print(f"  Base URL: https://openrouter.ai/api/v1")
-        print(f"  Model: openai/gpt-4.1")
+        print("✓ OpenAI-compatible client ready")
+        print("  Base URL: https://router.huggingface.co/v1")
+        print("  Model: meta-llama/Llama-3.3-70B-Instruct")
     else:
         print("✗ Using fallback mode (no API key)")

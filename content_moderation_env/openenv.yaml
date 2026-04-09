@@ -1,6 +1,7 @@
 version: "1.0"
 name: "content_moderation"
 version: "1.0.0"
-description: "OpenEnv Content Moderation Environment"
+description: "OpenEnv Content Moderation Environment - Real-world content moderation with 3 graded tasks (easy spam → medium toxic → hard mixed)"
+tags: ["openenv"]
 entrypoint: "server.app:app"
 port: 8000

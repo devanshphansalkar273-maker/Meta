@@ -1,280 +1,164 @@
 #!/usr/bin/env python3
-"""
-Production-ready inference script for Content Moderation OpenEnv.
-Uses OpenRouter API with GPT-4.1 for moderation decisions.
-"""
-
+"""Baseline inference script for Content Moderation OpenEnv.
+Strictly follows OpenEnv RL Challenge spec.
+Root directory: inference.py
+Reads: API_BASE_URL (default), MODEL_NAME (default), HF_TOKEN (required)
+Uses: Hugging Face router via OpenAI-compatible client
+Output: EXACT [START]/[STEP]/[END] format
+Runs: All 3 tasks (easy, medium, hard)"""
 import os
 import sys
 import json
 import logging
-from typing import Optional
-from openai import OpenAI, APIError, RateLimitError
+from typing import List, Tuple
+from openai import OpenAI
 
 try:
     from .env import ContentModerationEnv
-    from .models import ModerationAction, Decision, ContentCategory
-    from .prompts import get_moderation_system_prompt
-    from .openai_client import create_openai_client, create_nvidia_client
+    from .models import ModerationObservation, ModerationAction, Decision, ContentCategory
+    from .prompts import STRUCTURED_MODERATION_PROMPT
+    from .openai_client import create_openai_client
 except ImportError:
     from env import ContentModerationEnv
-    from models import ModerationAction, Decision, ContentCategory
-    from prompts import get_moderation_system_prompt
-    from openai_client import create_openai_client, create_nvidia_client
+    from models import ModerationObservation, ModerationAction, Decision, ContentCategory
+    from prompts import STRUCTURED_MODERATION_PROMPT
+    from openai_client import create_openai_client
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+DEFAULT_API_BASE_URL = "https://router.huggingface.co/v1"
+DEFAULT_MODEL_NAME = "meta-llama/Llama-3.3-70B-Instruct"
+
+
+def parse_action_response(content: str) -> ModerationAction:
+    """Parse API response to ModerationAction. Robust fallback."""
+    try:
+        data = json.loads(content)
+        decision_str = data.get("decision", "ESCALATE").upper()
+        category_str = data.get("category", "SAFE").upper()
+        confidence = max(0.0, min(1.0, data.get("confidence", 0.5)))
+        reasoning = data.get("reasoning", "API decision")
+    except Exception:
+        decision_str = "ESCALATE"
+        for d in ["REMOVE", "FLAG", "ALLOW", "ESCALATE"]:
+            if d.lower() in content.lower():
+                decision_str = d
+                break
+        category_str = "SAFE"
+        confidence = 0.5
+        reasoning = "Parsed fallback"
+
+    return ModerationAction(
+        decision=Decision(decision_str),
+        content_category=ContentCategory(category_str),
+        reasoning=reasoning,
+        confidence_score=confidence,
+    )
 
 
 class ModerationInferenceEngine:
-    """OpenRouter-based content moderation inference engine with fallback logic."""
-    
-    def __init__(self):
-        """Initialize inference engine preferring NVIDIA client, fallback to OpenRouter."""
-        
-        # Try NVIDIA first
-        self.client, self.use_api = create_nvidia_client()
-        self.client_type = "nvidia"
-        
-        if not self.use_api:
-            # Fallback to OpenRouter
-            self.client, self.use_api = create_openai_client()
-            self.client_type = "openrouter"
-            if not self.use_api:
-                logger.warning("No API available (NVIDIA or OpenRouter). Using fallback only.")
-        
-        if self.use_api:
-            logger.info(f"Using {self.client_type} client")
-        
-    
-    def get_moderation_decision(self, obs) -> ModerationAction:
-        """
-        Get moderation decision from GPT-4.1 via OpenRouter with fallback logic.
-        
-        Args:
-            obs: ModerationObservation object
-            
-        Returns:
-            ModerationAction with decision, category, reasoning, and confidence
-        """
-        if self.use_api:
-            try:
-                return self._call_gpt4_api(obs)
-            except (APIError, RateLimitError, Exception) as e:
-                logger.warning(f"API call failed: {e}. Using fallback logic.")
-                return self._fallback_decision(obs)
-        else:
-            return self._fallback_decision(obs)
-    
-    def _call_gpt4_api(self, obs) -> ModerationAction:
-        """Call model API with strict moderation prompt."""
+    """Inference engine wrapper used by the API server and training scripts."""
 
-        system_prompt = get_moderation_system_prompt("strict")
+    def __init__(
+        self,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        model_name: str | None = None,
+    ) -> None:
+        self.api_key = api_key or os.getenv("HF_TOKEN")
+        self.base_url = base_url or os.getenv("API_BASE_URL", DEFAULT_API_BASE_URL)
+        self.model_name = model_name or os.getenv("MODEL_NAME", DEFAULT_MODEL_NAME)
 
-        
-        user_prompt = f"""Post: {obs.post_body}
-Author Trust: {obs.metadata.author_trust_score}
-Account Age: {obs.metadata.account_age_days} days
-Reports: {obs.metadata.reports_count}
-Virality: {obs.metadata.virality_score}
-Context: {', '.join(obs.context) if obs.context else 'None'}
+        if not self.api_key:
+            raise EnvironmentError("HF_TOKEN environment variable is required")
 
-Decide: allow, flag, remove, or escalate?"""
-        
-        try:
-            from openai import OpenAI
-            
-            client = OpenAI(
-              base_url="https://api-inference.huggingface.co/v1/",
-              api_key="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"
-            )
-
-            completion = client.chat.completions.create(
-              model="meta-llama/Llama-3.3-70B-Instruct",
-              messages=[
-                  {"role": "system", "content": system_prompt},
-                  {"role": "user", "content": user_prompt}
-              ],
-              temperature=0.2,
-              top_p=0.7,
-              max_tokens=1024,
-              stream=True
-            )
-
-            content = ""
-            for chunk in completion:
-                if chunk.choices and chunk.choices[0].delta.content is not None:
-                    chunk_text = chunk.choices[0].delta.content
-                    print(chunk_text, end="")
-                    content += chunk_text
-            print() # Print newline after stream
-
-            if not content:
-                content = "ESCALATE"
-
-            content_str = str(content).strip().upper()
-            
-            decision_found = None
-            import re
-            
-            # First extract JSON decision using regex
-            json_match = re.search(r'{"DECISION":\s*"([A-Z]+)"}', content_str)
-            if json_match:
-                decision_found = json_match.group(1)
-            else:
-                # Then fallback to keyword detection
-                valid_decisions = ["ALLOW", "FLAG", "REMOVE", "ESCALATE"]
-                # Exact single word or substring detection
-                for word in valid_decisions:
-                    if word in content_str:
-                        decision_found = word
-                        break
-            
-            # Final fallback -> ESCALATE
-            if not decision_found:
-                decision_found = "ESCALATE"
-            
-            # Map to enum values
-            decision_map = {
-                "ALLOW": ("ALLOW", "SAFE", "API decision: Allow"),
-                "FLAG": ("FLAG", "SAFE", "API decision: Flag for review"),
-                "REMOVE": ("REMOVE", "SPAM", "API decision: Remove"),
-                "ESCALATE": ("ESCALATE", "SAFE", "API decision: Escalate")
-            }
-            
-            # Prevent KeyErrors on unexpected decisions by defaulting to ESCALATE
-            decision_tuple = decision_map.get(decision_found, decision_map["ESCALATE"])
-            decision_str, category_str, reasoning = decision_tuple
-            
-            return ModerationAction(
-                decision=Decision(decision_str),
-                content_category=ContentCategory(category_str),
-                reasoning=reasoning,
-                confidence_score=0.8
-            )
-        except Exception as e:
-            logger.error(f"API error: {e}")
-            raise
-    
-    def _fallback_decision(self, obs) -> ModerationAction:
-        """Fallback: Always ESCALATE per constraints when API unavailable."""
-        return ModerationAction(
-            decision=Decision.ESCALATE,
-            content_category=ContentCategory.SAFE,
-            reasoning="Fallback: ESCALATE (API unavailable)",
-            confidence_score=0.5
+        self.client, self.is_available = create_openai_client(
+            api_key=self.api_key,
+            base_url=self.base_url,
+            use_fallback=False,
         )
 
+        if not self.is_available or self.client is None:
+            raise RuntimeError("Failed to initialize Hugging Face client")
 
-def extract_action(client: OpenAI, obs) -> ModerationAction:
-    """Legacy function - kept for compatibility. Use ModerationInferenceEngine directly."""
-    engine = ModerationInferenceEngine()
-    return engine.get_moderation_decision(obs)
+    def build_prompt(self, obs: ModerationObservation) -> str:
+        return (
+            f"{STRUCTURED_MODERATION_PROMPT}\n\n"
+            f"Post: {obs.post_body}\n"
+            f"Metadata: {obs.metadata.model_dump_json()}\n"
+            f"Context: {obs.context}"
+        )
+
+    def get_moderation_decision(self, obs: ModerationObservation) -> ModerationAction:
+        prompt = self.build_prompt(obs)
+        resp = self.client.chat.completions.create(
+            model=self.model_name,
+            messages=[
+                {"role": "system", "content": STRUCTURED_MODERATION_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.1,
+            max_tokens=256,
+        )
+        content = (resp.choices[0].message.content or "").strip()
+        return parse_action_response(content)
 
 
-def run_inference(max_steps: Optional[int] = None):
-    """
-    Execute inference loop over the content moderation environment.
-    
-    Logs output in strict format:
-    [START]
-    [STEP] ...
-    [STEP] ...
-    [END]
-    
-    Args:
-        max_steps: Optional limit on number of steps (default: all)
-    """
-    print("[START]")
-    
-    step_count = 0
-    success = False
+def run_single_task(task_name: str, engine: ModerationInferenceEngine, rewards: List[float], step_num: List[int]) -> Tuple[bool, int]:
+    """Run inference on single task, append to shared logs."""
     try:
-        # Initialize environment and inference engine
         env = ContentModerationEnv()
-        engine = ModerationInferenceEngine()
-        
-        # Reset environment to hard task
-        obs = env.reset(task="hard")
-        logger.info(f"Environment reset to HARD tasks. Feed queue size: {len(env.feed_queue)}")
-        
-        total_reward = 0.0
-        step_count = 0
-        max_steps_to_run = max_steps or len(env.feed_queue)
-        
-        # Inference loop
-        while not env.done and step_count < max_steps_to_run:
-            try:
-                # Get moderation decision
-                action = engine.get_moderation_decision(obs)
-                
-                # Execute step in environment
-                next_obs, reward, done, info = env.step(action)
-                
-                # Log step with required format
-                print(f"[STEP] step={step_count+1} action={action.decision.value} reward={reward:.2f} done={done} error=None")
-                
-                total_reward += reward
-                step_count += 1
-                obs = next_obs
-                env.done = done
-                
-            except Exception as e:
-                logger.error(f"Error during step {step_count}: {e}")
-                # Continue on step errors
-                step_count += 1
-                if step_count < max_steps_to_run:
-                    try:
-                        obs = env._get_current_observation()
-                        env.current_idx += 1
-                    except:
-                        break
-        
-        avg_reward = total_reward / max(step_count, 1)
-        avg_reward = max(0.0, min(1.0, avg_reward))  # Clamp to [0, 1]
+        obs = env.reset(task=task_name)
 
+        print(f"[START] task={task_name} env=content_moderation model={engine.model_name}")
+
+        step_count = 0
+        total_reward = 0.0
+        task_rewards = []
+
+        while not env.done and step_count < 50:
+            action = engine.get_moderation_decision(obs)
+            next_obs, reward, done, info = env.step(action)
+
+            error = info.get("error", None) or "null"
+            task_rewards.append(reward)
+            rewards.extend(task_rewards)
+            step_num[0] += 1
+
+            print(f"[STEP]  step={step_count+1} action={action.decision.value} reward={reward:.2f} done={done} error={error}")
+
+            total_reward += reward
+            step_count += 1
+            obs = next_obs
+            if done:
+                break
+
+        avg_reward = total_reward / max(step_count, 1)
         success = avg_reward >= 0.5
-        print(f"[END] success={success} steps={step_count} score={avg_reward:.4f}")
-        
-        # Log final statistics
-        logger.info(f"Inference complete:")
-        logger.info(f"  Total steps: {step_count}")
-        logger.info(f"  Total reward: {total_reward:.2f}")
-        logger.info(f"  Average reward (normalized): {avg_reward:.4f}")
-        logger.info(f"  Metrics: {json.dumps(env.metrics, indent=2)}")
-        
-        return {
-            "status": "success",
-            "steps": step_count,
-            "total_reward": total_reward,
-            "average_reward": avg_reward,
-            "metrics": env.metrics
-        }
-        
+        print(f"[END]   success={success} steps={step_count} rewards={','.join(f'{r:.2f}' for r in task_rewards)}")
+        logger.info(f"{task_name}: success={success}, avg_reward={avg_reward:.4f}, steps={step_count}")
+        return success, step_count
+
     except Exception as e:
-        logger.error(f"Fatal error during inference: {e}", exc_info=True)
-        success = False
-        print(f"[END] success={success} steps={step_count} score=0.0000")
-        return {
-            "status": "error",
-            "error": str(e)
-        }
+        error_msg = str(e).replace("\n", " ")[:100]
+        print(f"[END]   success=false steps=0 rewards= error={error_msg}")
+        logger.error(f"{task_name} failed: {e}")
+        return False, 0
 
 
 if __name__ == "__main__":
-    # Support command-line argument for max steps
-    max_steps = None
-    if len(sys.argv) > 1:
-        try:
-            max_steps = int(sys.argv[1])
-        except ValueError:
-            logger.warning(f"Invalid max_steps argument: {sys.argv[1]}")
-    
-    result = run_inference(max_steps=max_steps)
-    
-    # Exit with status code based on result
-    sys.exit(0 if result["status"] == "success" else 1)
+    try:
+        engine = ModerationInferenceEngine()
+    except Exception as exc:
+        print(f"[END]   success=false steps=0 rewards= error={str(exc)[:100]}", file=sys.stderr)
+        sys.exit(1)
+
+    all_rewards = []
+    total_steps = [0]
+
+    for task in ["easy", "medium", "hard"]:
+        run_single_task(task, engine, all_rewards, total_steps)
+
+    logger.info("All tasks complete.")
+    sys.exit(0)

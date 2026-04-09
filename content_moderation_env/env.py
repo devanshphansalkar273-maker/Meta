@@ -12,6 +12,9 @@ try:
         UserMetadata,
         ModerationReward,
     )
+    from .tasks.easy import grade_easy_task
+    from .tasks.medium import grade_medium_task  
+    from .tasks.hard import grade_hard_task
 except ImportError:
     from models import (
         Decision,
@@ -21,6 +24,9 @@ except ImportError:
         UserMetadata,
         ModerationReward,
     )
+    from tasks.easy import grade_easy_task
+    from tasks.medium import grade_medium_task
+    from tasks.hard import grade_hard_task
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +147,16 @@ class ContentModerationEnv:
         user_id = task_data.get("user_id", "anonymous")
         gt_decision = Decision(task_data.get("ground_truth", "ESCALATE"))
         gt_category = ContentCategory(task_data.get("category", "SAFE"))
+        
+        # Programmatic grader score
+        if self.current_task == "easy":
+            grader_score = grade_easy_task(action, task_data)
+        elif self.current_task == "medium":
+            grader_score = grade_medium_task(action, task_data)
+        elif self.current_task == "hard":
+            grader_score = grade_hard_task(action, task_data)
+        else:
+            grader_score = 0.0
 
         reasons = []
         step_reward = 0.0
@@ -254,16 +270,26 @@ class ContentModerationEnv:
                 self.cumulative_reward += step_reward
                 self.human_review_queue.clear()
 
-        # ---- CLAMP FINAL REWARD ----
+        # Blend env_reward with grader_score
+        env_reward = step_reward
+        step_reward = 0.7 * env_reward + 0.3 * grader_score
         step_reward = max(0.0, min(1.0, step_reward))
+        
+        # ---- CLAMP FINAL REWARD ----
+        self.cumulative_reward += step_reward
         self.cumulative_reward = max(0.0, min(1.0, self.cumulative_reward))
 
         # Override payout description into info payload on end state
         info = {
-            "reward_details": ModerationReward(score=step_reward, reason=" | ".join(reasons)).model_dump(),
+            "reward_details": ModerationReward(
+                score=step_reward,
+                reason=" | ".join(reasons) + f" | Grader: {grader_score:.2f} Env: {env_reward:.2f}",
+            ).model_dump(),
             "hitl_batch_payout": hitl_payout,
             "cumulative_reward": self.cumulative_reward,
-            "metrics": self.metrics
+            "metrics": self.metrics,
+            "grader_score": grader_score,
+            "env_reward": env_reward
         }
 
         return self._get_current_observation(), step_reward, self.done, info
