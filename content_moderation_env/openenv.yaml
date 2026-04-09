@@ -4,4 +4,4 @@ version: "1.0.0"
 description: "OpenEnv Content Moderation Environment - Real-world content moderation with 3 graded tasks (easy spam → medium toxic → hard mixed)"
 tags: ["openenv"]
 entrypoint: "inference:app"
-port: 8000
+port: 7860
