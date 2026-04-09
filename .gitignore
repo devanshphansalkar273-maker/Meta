@@ -23,3 +23,6 @@ Dockerfile.*
 
 # Temp
 *.tmp
+
+# Nested repos / local worktrees
+meta/
